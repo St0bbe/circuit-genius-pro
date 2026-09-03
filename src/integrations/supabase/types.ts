@@ -14,7 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          company: string | null
+          crea: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          company?: string | null
+          crea?: string | null
+          created_at?: string
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          company?: string | null
+          crea?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          client_name: string | null
+          created_at: string
+          document: Json
+          id: string
+          name: string
+          site_address: string | null
+          system_type: string
+          updated_at: string
+          user_id: string
+          voltage_lighting: number
+          voltage_power: number
+        }
+        Insert: {
+          client_name?: string | null
+          created_at?: string
+          document?: Json
+          id?: string
+          name: string
+          site_address?: string | null
+          system_type?: string
+          updated_at?: string
+          user_id: string
+          voltage_lighting?: number
+          voltage_power?: number
+        }
+        Update: {
+          client_name?: string | null
+          created_at?: string
+          document?: Json
+          id?: string
+          name?: string
+          site_address?: string | null
+          system_type?: string
+          updated_at?: string
+          user_id?: string
+          voltage_lighting?: number
+          voltage_power?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
