@@ -17,9 +17,9 @@ type GlyphProps = { kind: ComponentKind; size?: number; height?: number };
 
 /**
  * Símbolos de planta baseados na convenção brasileira tradicional da NBR 5444:1989.
- * A norma foi cancelada, mas sua simbologia continua amplamente usada em projetos
- * prediais brasileiros. Dispositivos modernos sem símbolo específico recebem uma
- * identificação complementar e devem constar na legenda do projeto.
+ * A origem (0,0) dos símbolos de parede é o ponto exato de fixação na parede.
+ * A norma foi cancelada, mas sua simbologia tradicional ainda é amplamente usada
+ * como convenção gráfica em projetos prediais brasileiros.
  */
 export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
   const c = kindColor(kind);
@@ -28,33 +28,27 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
   const common = { stroke: c, fill: "none", strokeWidth: stroke, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   const text = (value: string, y = 3) => <text y={y} textAnchor="middle" fill={c} fontSize="7.5" fontWeight="600" fontFamily="var(--font-mono)">{value}</text>;
 
-  // Convenção gráfica de elemento instalado na parede: linha da parede hachurada
-  // e pequeno trecho de ligação até o símbolo, como na Tabela 6 da NBR 5444.
-  const wall = <g opacity="0.95">
-    <line x1="-11" y1="-7" x2="-11" y2="7" {...common} />
-    <line x1="-14" y1="-5" x2="-11" y2="-7" {...common} />
-    <line x1="-14" y1="-1" x2="-11" y2="-3" {...common} />
-    <line x1="-14" y1="3" x2="-11" y2="1" {...common} />
-    <line x1="-14" y1="7" x2="-11" y2="5" {...common} />
-  </g>;
-
   const outletHeight = height ?? CATALOG_BY_KIND[kind]?.height ?? 0.3;
   const outletLevel: "low" | "mid" | "high" = outletHeight >= 1.8 ? "high" : outletHeight >= 0.8 ? "mid" : "low";
 
-  // NBR 5444, Tabela 6: tomada = triângulo equilátero ligado à parede.
-  // Baixa: vazada; média: metade inferior preenchida; alta: preenchida.
-  // Elemento no piso: símbolo circundado por quadrado.
+  // Tomada de parede: o ponto (0,0) encosta exatamente na parede.
+  // O pequeno traço representa a ligação parede-símbolo e o triângulo aponta
+  // perpendicularmente para o ambiente. A rotação é definida pelo PlanCanvas.
   const outletTriangle = (count = 1, floor = false, suffix?: string) => {
-    const trianglePath = "M -6 -5.5 L 4 0 L -6 5.5 Z";
+    const trianglePath = "M 5 -6 L 15 0 L 5 6 Z";
     const base = <>
-      {!floor && <>{wall}<line x1="-11" y1="0" x2="-6" y2="0" {...common} /></>}
+      {!floor && <line x1="0" y1="0" x2="5" y2="0" {...common} />}
       <path d={trianglePath} {...common} fill={outletLevel === "high" ? c : "none"} />
-      {outletLevel === "mid" && <path d="M -6 0 L 4 0 L -6 5.5 Z" fill={c} stroke="none" />}
-      {count > 1 && <text x="-1" y="-7.2" textAnchor="middle" fill={c} fontSize="5.5" fontWeight="700" fontFamily="var(--font-mono)">{count}</text>}
-      {suffix && <text x="6" y="3" fill={c} fontSize="5" fontWeight="700" fontFamily="var(--font-mono)">{suffix}</text>}
+      {outletLevel === "mid" && <path d="M 5 0 L 15 0 L 5 6 Z" fill={c} stroke="none" />}
+      {count > 1 && <text x="10" y="-8" textAnchor="middle" fill={c} fontSize="6" fontWeight="700" fontFamily="var(--font-mono)">{count}</text>}
+      {suffix && <text x="17" y="3" fill={c} fontSize="5" fontWeight="700" fontFamily="var(--font-mono)">{suffix}</text>}
     </>;
-    return floor ? <><rect x="-10" y="-9" width="20" height="18" rx="1" {...common} />{base}</> : base;
+    return floor ? <><rect x="-10" y="-10" width="20" height="20" rx="1" {...common} /><path d="M -5 -5.5 L 5 0 L -5 5.5 Z" {...common} /></> : base;
   };
+
+  const wall = <g opacity="0.95">
+    <line x1="0" y1="-7" x2="0" y2="7" {...common} />
+  </g>;
 
   const equipmentBox = (label: string) => <><rect x="-9" y="-8" width="18" height="16" {...common} />{text(label)}</>;
 
@@ -64,7 +58,7 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
     case "ponto_luz": body = <circle r="8" {...common} />; break;
     case "luminaria": body = <><rect x="-10" y="-6" width="20" height="12" {...common} /><circle r="5" {...common} /></>; break;
     case "spot": body = <><circle r="8" fill={c} stroke={c} strokeWidth={stroke} /><circle r="3.3" fill="var(--background)" stroke="none" /></>; break;
-    case "arandela": body = <>{wall}<circle cx="-1" r="6.5" {...common} /></>; break;
+    case "arandela": body = <>{wall}<circle cx="7" r="6.5" {...common} /></>; break;
     case "perfil_led": body = <><rect x="-10" y="-4" width="20" height="8" {...common} /><line x1="-7" y1="0" x2="7" y2="0" {...common} /></>; break;
     case "sensor_presenca": body = <><circle r="7.5" {...common} />{text("SP")}</>; break;
     case "fotocelula": body = <><circle r="7.5" {...common} />{text("FC")}</>; break;
