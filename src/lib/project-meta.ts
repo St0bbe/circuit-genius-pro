@@ -9,6 +9,9 @@ export type ProfessionalMetadata = {
   siteAddress: string;
   revision: string;
   revisionDate: string;
+  signatureName: string;
+  signatureDate: string;
+  signatureReference: string;
   responsibilityNote: string;
 };
 
@@ -23,6 +26,9 @@ export const DEFAULT_PROFESSIONAL_METADATA: ProfessionalMetadata = {
   siteAddress: "",
   revision: "R00",
   revisionDate: "",
+  signatureName: "",
+  signatureDate: "",
+  signatureReference: "",
   responsibilityNote: "Os cálculos e verificações do software são ferramentas de apoio. A validação final e a responsabilidade técnica são do profissional habilitado.",
 };
 
