@@ -75,7 +75,10 @@ export function withCircuits(doc: PlanDocument, circuits: Circuit[]): PlanDocume
 }
 
 export function normalizeProjectDocument(raw: unknown): PlanDocument {
-  const base = normalizeDocument(raw);
+  const rawObject = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  // Keep extension data (wire runs, protection, versions, budgets, etc.) while
+  // normalizing the core drawing arrays. This makes feature modules persist across reloads.
+  const base = { ...rawObject, ...normalizeDocument(raw) } as PlanDocument;
   const rawCircuits = Array.isArray((raw as { circuits?: unknown[] } | null)?.circuits) ? ((raw as { circuits: Circuit[] }).circuits ?? []) : [];
   const byId = new Map(rawCircuits.filter((c) => c?.id).map((c) => [c.id.toUpperCase(), normalizeCircuit(c)]));
   const groups = new Map<string, PlanPoint[]>();
