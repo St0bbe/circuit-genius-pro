@@ -1,15 +1,6 @@
 export type LayerId =
-  | "arquitetura"
-  | "iluminacao"
-  | "tomadas"
-  | "interruptores"
-  | "equipamentos"
-  | "eletrodutos"
-  | "fiacao"
-  | "quadro"
-  | "dados"
-  | "seguranca"
-  | "outros";
+  | "arquitetura" | "iluminacao" | "tomadas" | "interruptores" | "equipamentos"
+  | "eletrodutos" | "fiacao" | "quadro" | "dados" | "seguranca" | "outros";
 
 export const LAYERS: { id: LayerId; label: string; colorVar: string }[] = [
   { id: "arquitetura", label: "Arquitetura", colorVar: "var(--wall)" },
@@ -26,30 +17,23 @@ export const LAYERS: { id: LayerId; label: string; colorVar: string }[] = [
 ];
 
 export type ComponentKind =
-  | "ponto_luz" | "luminaria" | "spot" | "arandela" | "perfil_led"
-  | "sensor_presenca" | "fotocelula" | "interruptor_simples" | "interruptor_paralelo"
-  | "interruptor_intermediario" | "dimmer" | "rele" | "comando_sensor"
-  | "tug" | "tug_dupla" | "tug_tripla" | "tug_usb" | "tue" | "tomada_equipamento"
-  | "tomada_piso" | "tomada_externa" | "chuveiro" | "torneira_eletrica" | "forno"
-  | "cooktop" | "microondas" | "maquina_lavar" | "maquina_secar" | "ar_condicionado"
-  | "bomba" | "motor" | "motor_portao" | "aquecedor" | "geladeira" | "freezer" | "lava_loucas";
+  | "ponto_luz" | "luminaria" | "spot" | "arandela" | "perfil_led" | "sensor_presenca" | "fotocelula"
+  | "interruptor_simples" | "interruptor_paralelo" | "interruptor_intermediario" | "dimmer" | "rele" | "comando_sensor"
+  | "tug" | "tug_dupla" | "tug_tripla" | "tug_usb" | "tue" | "tomada_equipamento" | "tomada_piso" | "tomada_externa"
+  | "chuveiro" | "torneira_eletrica" | "forno" | "cooktop" | "microondas" | "maquina_lavar" | "maquina_secar"
+  | "ar_condicionado" | "bomba" | "motor" | "motor_portao" | "aquecedor" | "geladeira" | "freezer" | "lava_loucas";
 
 export type ComponentDef = {
-  kind: ComponentKind;
-  label: string;
-  short: string;
-  layer: LayerId;
+  kind: ComponentKind; label: string; short: string; layer: LayerId;
   group: "Iluminação" | "Comandos" | "Tomadas" | "Equipamentos";
-  power: number;
-  voltage: 127 | 220;
-  height: number;
+  power: number; voltage: 127 | 220; height: number;
 };
 
 export const CATALOG: ComponentDef[] = [
   { kind: "ponto_luz", label: "Ponto de luz", short: "L", layer: "iluminacao", group: "Iluminação", power: 100, voltage: 127, height: 2.8 },
   { kind: "luminaria", label: "Luminária", short: "LM", layer: "iluminacao", group: "Iluminação", power: 60, voltage: 127, height: 2.8 },
   { kind: "spot", label: "Spot", short: "SP", layer: "iluminacao", group: "Iluminação", power: 12, voltage: 127, height: 2.8 },
-  { kind: "arandela", label: "Arandela", short: "AR", layer: "iluminacao", group: "Iluminação", power: 60, voltage: 127, height: 2.0 },
+  { kind: "arandela", label: "Arandela", short: "AR", layer: "iluminacao", group: "Iluminação", power: 60, voltage: 127, height: 2 },
   { kind: "perfil_led", label: "Perfil LED", short: "PL", layer: "iluminacao", group: "Iluminação", power: 24, voltage: 127, height: 2.8 },
   { kind: "sensor_presenca", label: "Sensor de presença", short: "SN", layer: "iluminacao", group: "Iluminação", power: 5, voltage: 127, height: 2.2 },
   { kind: "fotocelula", label: "Fotocélula", short: "FC", layer: "iluminacao", group: "Iluminação", power: 5, voltage: 127, height: 2.2 },
@@ -87,15 +71,37 @@ export const CATALOG: ComponentDef[] = [
 export const CATALOG_BY_KIND: Record<ComponentKind, ComponentDef> = Object.fromEntries(CATALOG.map((c) => [c.kind, c])) as Record<ComponentKind, ComponentDef>;
 
 export type Room = { id: string; name: string; x: number; y: number; w: number; h: number };
-export type PlanPoint = { id: string; kind: ComponentKind; x: number; y: number; label: string; power: number; voltage: number; height: number; circuit: string; notes?: string };
-export type Panel = { id: string; name: string; x: number; y: number };
+export type PlanPoint = { id: string; kind: ComponentKind; x: number; y: number; label: string; power: number; voltage: number; height: number; circuit: string; notes?: string; rotation?: number; mirrored?: boolean };
+export type Panel = { id: string; name: string; x: number; y: number; rotation?: number };
 export type Conduit = { id: string; from: string; to: string; diameter: number };
-export type PlanDocument = { rooms: Room[]; points: PlanPoint[]; panels: Panel[]; conduits: Conduit[] };
-export const EMPTY_DOCUMENT: PlanDocument = { rooms: [], points: [], panels: [], conduits: [] };
+export type ArchitecturalKind = "wall" | "door" | "window";
+export type ArchitecturalElement = {
+  id: string;
+  kind: ArchitecturalKind;
+  x1: number; y1: number; x2: number; y2: number;
+  thickness?: number;
+  openingDirection?: "left" | "right";
+};
+
+export type PlanDocument = {
+  rooms: Room[];
+  points: PlanPoint[];
+  panels: Panel[];
+  conduits: Conduit[];
+  architecture: ArchitecturalElement[];
+};
+
+export const EMPTY_DOCUMENT: PlanDocument = { rooms: [], points: [], panels: [], conduits: [], architecture: [] };
 
 export function normalizeDocument(raw: unknown): PlanDocument {
   const d = (raw ?? {}) as Partial<PlanDocument>;
-  return { rooms: Array.isArray(d.rooms) ? d.rooms : [], points: Array.isArray(d.points) ? d.points : [], panels: Array.isArray(d.panels) ? d.panels : [], conduits: Array.isArray(d.conduits) ? d.conduits : [] };
+  return {
+    rooms: Array.isArray(d.rooms) ? d.rooms : [],
+    points: Array.isArray(d.points) ? d.points : [],
+    panels: Array.isArray(d.panels) ? d.panels : [],
+    conduits: Array.isArray(d.conduits) ? d.conduits : [],
+    architecture: Array.isArray(d.architecture) ? d.architecture : [],
+  };
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -110,6 +116,7 @@ export function nodePosition(doc: PlanDocument, id: string): { x: number; y: num
   return null;
 }
 export function conduitLength(doc: PlanDocument, c: Conduit): number { const a = nodePosition(doc, c.from); const b = nodePosition(doc, c.to); return !a || !b ? 0 : Math.hypot(b.x - a.x, b.y - a.y); }
+export function architectureLength(e: ArchitecturalElement): number { return Math.hypot(e.x2 - e.x1, e.y2 - e.y1); }
 export function roomArea(r: Room): number { return r.w * r.h; }
 export function nextLabel(doc: PlanDocument, kind: ComponentKind): string { const def = CATALOG_BY_KIND[kind]; const n = doc.points.filter((p) => p.kind === kind).length + 1; return `${def.short}-${String(n).padStart(2, "0")}`; }
 
