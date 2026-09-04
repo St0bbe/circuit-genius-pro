@@ -24,6 +24,15 @@ export type Circuit = {
 
 type DocumentWithCircuits = PlanDocument & { circuits?: Circuit[] };
 
+function safeCircuitCode(value: unknown) {
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+function safePositive(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function inferCircuitType(points: PlanPoint[]): CircuitType {
   const layers = new Set(points.map((point) => CATALOG_BY_KIND[point.kind]?.layer));
   if (layers.size !== 1) return "mixed";
@@ -51,13 +60,49 @@ function defaults(): Pick<Circuit, "installationMethod" | "ambientCorrection" | 
 }
 
 function normalizeCircuit(circuit: Circuit): Circuit {
+  const id = safeCircuitCode(circuit?.id);
+  const voltage = Number(circuit?.voltage) === 220 ? 220 : 127;
+  const phase: CircuitPhase = ["A", "B", "C", "AB", "BC", "CA", "auto"].includes(String(circuit?.phase))
+    ? circuit.phase
+    : "auto";
+  const type: CircuitType = ["lighting", "outlets", "equipment", "mixed"].includes(String(circuit?.type))
+    ? circuit.type
+    : "mixed";
+
   return {
     ...defaults(),
     ...circuit,
-    id: circuit.id.toUpperCase(),
-    ambientCorrection: Number.isFinite(circuit.ambientCorrection) && circuit.ambientCorrection > 0 ? circuit.ambientCorrection : 1,
-    groupingCorrection: Number.isFinite(circuit.groupingCorrection) && circuit.groupingCorrection > 0 ? circuit.groupingCorrection : 1,
-    powerFactor: Number.isFinite(circuit.powerFactor) && circuit.powerFactor > 0 ? circuit.powerFactor : 1,
+    id,
+    name: typeof circuit?.name === "string" && circuit.name.trim() ? circuit.name : id,
+    description: typeof circuit?.description === "string" && circuit.description.trim() ? circuit.description : defaultDescription(type),
+    type,
+    voltage,
+    phase,
+    panelId: typeof circuit?.panelId === "string" && circuit.panelId.trim() ? circuit.panelId : null,
+    demandFactor: safePositive(circuit?.demandFactor, 1),
+    enabled: circuit?.enabled !== false,
+    installationMethod: typeof circuit?.installationMethod === "string" && circuit.installationMethod.trim() ? circuit.installationMethod : "configurar",
+    ambientCorrection: safePositive(circuit?.ambientCorrection, 1),
+    groupingCorrection: safePositive(circuit?.groupingCorrection, 1),
+    conductorMaterial: circuit?.conductorMaterial === "aluminum" ? "aluminum" : "copper",
+    routeLengthOverrideM: Number.isFinite(Number(circuit?.routeLengthOverrideM)) && Number(circuit?.routeLengthOverrideM) > 0 ? Number(circuit.routeLengthOverrideM) : null,
+    powerFactor: safePositive(circuit?.powerFactor, 1),
+  };
+}
+
+function normalizePoint(point: PlanPoint): PlanPoint {
+  const def = CATALOG_BY_KIND[point?.kind];
+  return {
+    ...point,
+    id: typeof point?.id === "string" ? point.id : "",
+    label: typeof point?.label === "string" ? point.label : def?.short ?? "P",
+    x: Number.isFinite(Number(point?.x)) ? Number(point.x) : 0,
+    y: Number.isFinite(Number(point?.y)) ? Number(point.y) : 0,
+    power: Number.isFinite(Number(point?.power)) ? Number(point.power) : def?.power ?? 0,
+    voltage: Number(point?.voltage) === 220 ? 220 : Number(point?.voltage) === 127 ? 127 : def?.voltage ?? 127,
+    height: Number.isFinite(Number(point?.height)) ? Number(point.height) : def?.height ?? 0,
+    circuit: safeCircuitCode(point?.circuit),
+    notes: typeof point?.notes === "string" ? point.notes : undefined,
   };
 }
 
@@ -67,29 +112,47 @@ export function circuitFromPoints(id: string, points: PlanPoint[]): Circuit {
 }
 
 export function getCircuits(doc: PlanDocument): Circuit[] {
-  return Array.isArray((doc as DocumentWithCircuits).circuits) ? (doc as DocumentWithCircuits).circuits!.map(normalizeCircuit) : [];
+  const raw = Array.isArray((doc as DocumentWithCircuits).circuits) ? (doc as DocumentWithCircuits).circuits! : [];
+  return raw.map((circuit) => normalizeCircuit(circuit)).filter((circuit) => Boolean(circuit.id));
 }
 
 export function withCircuits(doc: PlanDocument, circuits: Circuit[]): PlanDocument {
-  return { ...doc, circuits: circuits.map(normalizeCircuit) } as PlanDocument;
+  return { ...doc, circuits: circuits.map(normalizeCircuit).filter((circuit) => Boolean(circuit.id)) } as PlanDocument;
 }
 
 export function normalizeProjectDocument(raw: unknown): PlanDocument {
   const rawObject = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-  // Keep extension data (wire runs, protection, versions, budgets, etc.) while
-  // normalizing the core drawing arrays. This makes feature modules persist across reloads.
-  const base = { ...rawObject, ...normalizeDocument(raw) } as PlanDocument;
-  const rawCircuits = Array.isArray((raw as { circuits?: unknown[] } | null)?.circuits) ? ((raw as { circuits: Circuit[] }).circuits ?? []) : [];
-  const byId = new Map(rawCircuits.filter((c) => c?.id).map((c) => [c.id.toUpperCase(), normalizeCircuit(c)]));
+  // Preserve extension data while sanitizing the core drawing fields. Stored JSON can
+  // come from older revisions or manual edits, so strings/numbers are normalized here
+  // before any engineering module renders.
+  const normalized = normalizeDocument(raw);
+  const base = {
+    ...rawObject,
+    ...normalized,
+    points: normalized.points.filter((point): point is PlanPoint => Boolean(point && typeof point === "object")).map(normalizePoint),
+  } as PlanDocument;
+
+  const candidateCircuits = Array.isArray((raw as { circuits?: unknown[] } | null)?.circuits)
+    ? ((raw as { circuits: unknown[] }).circuits ?? [])
+    : [];
+  const rawCircuits = candidateCircuits.filter((value): value is Circuit => Boolean(value && typeof value === "object"));
+  const byId = new Map<string, Circuit>();
+
+  for (const circuit of rawCircuits) {
+    const normalizedCircuit = normalizeCircuit(circuit);
+    if (normalizedCircuit.id) byId.set(normalizedCircuit.id, normalizedCircuit);
+  }
+
   const groups = new Map<string, PlanPoint[]>();
   for (const point of base.points) {
-    const id = point.circuit.trim().toUpperCase();
+    const id = safeCircuitCode(point.circuit);
     if (!id) continue;
     const list = groups.get(id) ?? [];
     list.push(point);
     groups.set(id, list);
   }
   for (const [id, points] of groups) if (!byId.has(id)) byId.set(id, circuitFromPoints(id, points));
+
   return withCircuits(base, [...byId.values()].sort((a, b) => a.id.localeCompare(b.id, "pt-BR", { numeric: true })));
 }
 
@@ -100,10 +163,11 @@ export function nextCircuitCode(doc: PlanDocument) {
 }
 
 export function createCircuit(doc: PlanDocument, partial?: Partial<Circuit>): Circuit {
-  const id = partial?.id?.trim().toUpperCase() || nextCircuitCode(doc);
+  const id = safeCircuitCode(partial?.id) || nextCircuitCode(doc);
   return normalizeCircuit({ id, name: partial?.name ?? id, description: partial?.description ?? "Novo circuito", type: partial?.type ?? "mixed", voltage: partial?.voltage ?? 127, phase: partial?.phase ?? "auto", panelId: partial?.panelId ?? null, demandFactor: partial?.demandFactor ?? 1, enabled: partial?.enabled ?? true, ...defaults(), ...partial } as Circuit);
 }
 
 export function removeCircuit(doc: PlanDocument, id: string): PlanDocument {
-  return withCircuits({ ...doc, points: doc.points.map((point) => point.circuit.toUpperCase() === id.toUpperCase() ? { ...point, circuit: "" } : point) }, getCircuits(doc).filter((circuit) => circuit.id !== id));
+  const target = safeCircuitCode(id);
+  return withCircuits({ ...doc, points: doc.points.map((point) => safeCircuitCode(point.circuit) === target ? { ...point, circuit: "" } : point) }, getCircuits(doc).filter((circuit) => circuit.id !== target));
 }
