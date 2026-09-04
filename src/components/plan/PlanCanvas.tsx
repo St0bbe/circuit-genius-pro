@@ -40,6 +40,7 @@ type SegmentDraft = { kind: ArchitecturalKind; x0: number; y0: number; x1: numbe
 type DragState =
   | { kind: "pan"; ox: number; oy: number }
   | { kind: "move"; id: string; type: string; ox: number; oy: number }
+  | { kind: "room-label"; id: string; ox: number; oy: number }
   | { kind: "conduit-bend"; id: string; index: number };
 
 export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection, onSelect, onToolDone }: Props) {
@@ -130,6 +131,12 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   const onMouseMove = (e: React.MouseEvent) => {
     const drag = dragRef.current;
     if (drag?.kind === "pan") { setView((v) => ({ ...v, x: e.clientX - drag.ox, y: e.clientY - drag.oy })); return; }
+    if (drag?.kind === "room-label") {
+      const w = toWorld(e.clientX, e.clientY);
+      const labelX = w.x - drag.ox, labelY = w.y - drag.oy;
+      onChange((d) => ({ ...d, rooms: d.rooms.map((room) => room.id === drag.id ? { ...room, labelX, labelY } : room) }));
+      return;
+    }
     if (drag?.kind === "conduit-bend") {
       const w = toWorld(e.clientX, e.clientY);
       const next = { x: snap(w.x), y: snap(w.y) };
@@ -149,7 +156,14 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
         }
         const current = d.rooms.find((r) => r.id === drag.id); if (!current) return d;
         const dx = nx - current.x, dy = ny - current.y;
-        return { ...d, rooms: d.rooms.map((r) => r.id === drag.id ? { ...r, x: nx, y: ny, points: r.points?.map((p) => ({ x: p.x + dx, y: p.y + dy })) } : r) };
+        return { ...d, rooms: d.rooms.map((r) => r.id === drag.id ? {
+          ...r,
+          x: nx,
+          y: ny,
+          labelX: r.labelX == null ? undefined : r.labelX + dx,
+          labelY: r.labelY == null ? undefined : r.labelY + dy,
+          points: r.points?.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+        } : r) };
       });
       return;
     }
@@ -190,6 +204,14 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     onSelect({ type: type as NonNullable<Selection>["type"], id });
   };
 
+  const startRoomLabelMove = (e: React.MouseEvent, id: string, px: number, py: number) => {
+    if (tool !== "select") return;
+    e.stopPropagation();
+    const w = toWorld(e.clientX, e.clientY);
+    dragRef.current = { kind: "room-label", id, ox: w.x - px, oy: w.y - py };
+    onSelect({ type: "room", id });
+  };
+
   const startBendMove = (e: React.MouseEvent, id: string, index: number) => {
     if (tool !== "select") return;
     e.stopPropagation();
@@ -219,11 +241,19 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
       <g transform={`translate(${view.x} ${view.y}) scale(${view.z})`}>
         {visible.arquitetura && doc.rooms.map((r) => {
           const selected = isSel("room", r.id);
-          const labelX = r.x * PX_PER_M + 10, labelY = r.y * PX_PER_M + 22;
-          return <g key={r.id} onMouseDown={(e) => startMove(e, "room", r.id, r.x, r.y)}>
-            {r.points && r.points.length >= 3 ? <polygon points={r.points.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} /> : <rect x={r.x * PX_PER_M} y={r.y * PX_PER_M} width={r.w * PX_PER_M} height={r.h * PX_PER_M} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />}
-            <text x={labelX} y={labelY} fill="var(--foreground)" fontSize={13} fontFamily="var(--font-sans)">{r.name}</text>
-            <text x={labelX} y={labelY + 16} fill="var(--muted-foreground)" fontSize={11} fontFamily="var(--font-mono)">{r.points ? `forma livre · ${roomArea(r).toFixed(2)} m²` : `${r.w.toFixed(2)} × ${r.h.toFixed(2)} m · ${roomArea(r).toFixed(2)} m²`}</text>
+          const labelWorldX = r.labelX ?? (r.x + 10 / PX_PER_M);
+          const labelWorldY = r.labelY ?? (r.y + 22 / PX_PER_M);
+          const labelX = labelWorldX * PX_PER_M, labelY = labelWorldY * PX_PER_M;
+          const roomShapeProps = { onMouseDown: (e: React.MouseEvent<SVGElement>) => startMove(e, "room", r.id, r.x, r.y) };
+          return <g key={r.id}>
+            {r.points && r.points.length >= 3
+              ? <polygon {...roomShapeProps} points={r.points.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />
+              : <rect {...roomShapeProps} x={r.x * PX_PER_M} y={r.y * PX_PER_M} width={r.w * PX_PER_M} height={r.h * PX_PER_M} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />}
+            <g onMouseDown={(e) => startRoomLabelMove(e, r.id, labelWorldX, labelWorldY)} style={{ cursor: tool === "select" ? "move" : undefined }}>
+              <rect x={labelX - 5} y={labelY - 15} width={Math.max(118, r.name.length * 7)} height={39} rx={3} fill="var(--surface)" fillOpacity={selected ? 0.9 : 0.55} stroke={selected ? "var(--primary)" : "transparent"} strokeWidth={1} />
+              <text x={labelX} y={labelY} fill="var(--foreground)" fontSize={13} fontFamily="var(--font-sans)">{r.name}</text>
+              <text x={labelX} y={labelY + 16} fill="var(--muted-foreground)" fontSize={11} fontFamily="var(--font-mono)">{r.points ? `forma livre · ${roomArea(r).toFixed(2)} m²` : `${r.w.toFixed(2)} × ${r.h.toFixed(2)} m · ${roomArea(r).toFixed(2)} m²`}</text>
+            </g>
           </g>;
         })}
 
