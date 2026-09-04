@@ -19,6 +19,7 @@ import {
   type PlanDocument,
   type PlanVertex,
 } from "@/lib/electrical";
+import { getWireRuns } from "@/lib/auto-routing";
 import { SymbolGlyph, kindColor } from "./SymbolGlyph";
 
 export type Tool = "select" | "room" | "room_free" | "wall" | "door" | "window" | "point" | "panel" | "conduit";
@@ -102,11 +103,8 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     if (tool === "room_free") {
       const next = { x: snap(w.x), y: snap(w.y) };
       const first = roomPolygon[0];
-      if (first && roomPolygon.length >= 3 && Math.hypot(next.x - first.x, next.y - first.y) <= 0.35) {
-        finishFreeRoom(roomPolygon);
-      } else {
-        setRoomPolygon((pts) => [...pts, next]);
-      }
+      if (first && roomPolygon.length >= 3 && Math.hypot(next.x - first.x, next.y - first.y) <= 0.35) finishFreeRoom(roomPolygon);
+      else setRoomPolygon((pts) => [...pts, next]);
       return;
     }
     const architectureKind = architectureKindForTool();
@@ -140,19 +138,16 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     }
     if (drag?.kind === "move") {
       const w = toWorld(e.clientX, e.clientY);
-      const nx = snap(w.x - drag.ox);
-      const ny = snap(w.y - drag.oy);
+      const nx = snap(w.x - drag.ox), ny = snap(w.y - drag.oy);
       onChange((d) => {
         if (drag.type === "point") return { ...d, points: d.points.map((p) => p.id === drag.id ? { ...p, x: nx, y: ny } : p) };
         if (drag.type === "panel") return { ...d, panels: d.panels.map((p) => p.id === drag.id ? { ...p, x: nx, y: ny } : p) };
         if (drag.type === "architecture") {
-          const current = d.architecture.find((a) => a.id === drag.id);
-          if (!current) return d;
+          const current = d.architecture.find((a) => a.id === drag.id); if (!current) return d;
           const dx = nx - current.x1, dy = ny - current.y1;
           return { ...d, architecture: d.architecture.map((a) => a.id === drag.id ? { ...a, x1: a.x1 + dx, y1: a.y1 + dy, x2: a.x2 + dx, y2: a.y2 + dy } : a) };
         }
-        const current = d.rooms.find((r) => r.id === drag.id);
-        if (!current) return d;
+        const current = d.rooms.find((r) => r.id === drag.id); if (!current) return d;
         const dx = nx - current.x, dy = ny - current.y;
         return { ...d, rooms: d.rooms.map((r) => r.id === drag.id ? { ...r, x: nx, y: ny, points: r.points?.map((p) => ({ x: p.x + dx, y: p.y + dy })) } : r) };
       });
@@ -177,8 +172,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
       }
     }
     if (segment) {
-      const draft = segment;
-      setSegment(null);
+      const draft = segment; setSegment(null);
       if (Math.hypot(draft.x1 - draft.x0, draft.y1 - draft.y0) >= 0.25) {
         const id = uid();
         onChange((d) => ({ ...d, architecture: [...d.architecture, { id, kind: draft.kind, x1: draft.x0, y1: draft.y0, x2: draft.x1, y2: draft.y1, thickness: draft.kind === "wall" ? 0.15 : undefined, openingDirection: draft.kind === "door" ? "left" : undefined }] }));
@@ -208,8 +202,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     e.stopPropagation();
     if (!conduitFrom) { setConduitFrom(id); return; }
     if (conduitFrom === id) { setConduitFrom(null); return; }
-    const a = nodePosition(doc, conduitFrom);
-    const b = nodePosition(doc, id);
+    const a = nodePosition(doc, conduitFrom), b = nodePosition(doc, id);
     const route = a && b && Math.abs(a.x - b.x) > 0.01 && Math.abs(a.y - b.y) > 0.01 ? [{ x: b.x, y: a.y }] : [];
     const cid = uid();
     onChange((d) => ({ ...d, conduits: [...d.conduits, { id: cid, from: conduitFrom, to: id, diameter: 25, type: "normal", route }] }));
@@ -219,6 +212,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
 
   const isSel = (type: string, id: string) => selection?.type === type && selection.id === id;
   const cursor = tool === "select" ? "default" : ["room", "room_free", "wall", "door", "window"].includes(tool) ? "crosshair" : tool === "conduit" ? "cell" : "copy";
+  const wireRuns = getWireRuns(doc);
 
   return (
     <svg ref={svgRef} className="h-full w-full select-none blueprint-surface" style={{ cursor }} onWheel={handleWheel} onMouseDown={onBackgroundDown} onMouseMove={onMouseMove} onMouseUp={endInteraction} onMouseLeave={endInteraction} onContextMenu={(e) => e.preventDefault()}>
@@ -226,61 +220,59 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
         {visible.arquitetura && doc.rooms.map((r) => {
           const selected = isSel("room", r.id);
           const labelX = r.x * PX_PER_M + 10, labelY = r.y * PX_PER_M + 22;
-          return (
-            <g key={r.id} onMouseDown={(e) => startMove(e, "room", r.id, r.x, r.y)}>
-              {r.points && r.points.length >= 3 ? (
-                <polygon points={r.points.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />
-              ) : (
-                <rect x={r.x * PX_PER_M} y={r.y * PX_PER_M} width={r.w * PX_PER_M} height={r.h * PX_PER_M} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />
-              )}
-              <text x={labelX} y={labelY} fill="var(--foreground)" fontSize={13} fontFamily="var(--font-sans)">{r.name}</text>
-              <text x={labelX} y={labelY + 16} fill="var(--muted-foreground)" fontSize={11} fontFamily="var(--font-mono)">{r.points ? `forma livre · ${roomArea(r).toFixed(2)} m²` : `${r.w.toFixed(2)} × ${r.h.toFixed(2)} m · ${roomArea(r).toFixed(2)} m²`}</text>
-            </g>
-          );
+          return <g key={r.id} onMouseDown={(e) => startMove(e, "room", r.id, r.x, r.y)}>
+            {r.points && r.points.length >= 3 ? <polygon points={r.points.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} /> : <rect x={r.x * PX_PER_M} y={r.y * PX_PER_M} width={r.w * PX_PER_M} height={r.h * PX_PER_M} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />}
+            <text x={labelX} y={labelY} fill="var(--foreground)" fontSize={13} fontFamily="var(--font-sans)">{r.name}</text>
+            <text x={labelX} y={labelY + 16} fill="var(--muted-foreground)" fontSize={11} fontFamily="var(--font-mono)">{r.points ? `forma livre · ${roomArea(r).toFixed(2)} m²` : `${r.w.toFixed(2)} × ${r.h.toFixed(2)} m · ${roomArea(r).toFixed(2)} m²`}</text>
+          </g>;
         })}
 
         {visible.arquitetura && doc.architecture.map((a) => {
           const x1 = a.x1 * PX_PER_M, y1 = a.y1 * PX_PER_M, x2 = a.x2 * PX_PER_M, y2 = a.y2 * PX_PER_M;
-          const selected = isSel("architecture", a.id);
-          const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+          const selected = isSel("architecture", a.id), dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
           const nx = -dy / len, ny = dx / len;
-          return (
-            <g key={a.id} onMouseDown={(e) => startMove(e, "architecture", a.id, a.x1, a.y1)}>
-              {a.kind === "wall" && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={Math.max(4, (a.thickness ?? 0.15) * PX_PER_M)} strokeLinecap="square" />}
-              {a.kind === "window" && <><line x1={x1 + nx * 3} y1={y1 + ny * 3} x2={x2 + nx * 3} y2={y2 + ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /><line x1={x1 - nx * 3} y1={y1 - ny * 3} x2={x2 - nx * 3} y2={y2 - ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /></>}
-              {a.kind === "door" && <><line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} /><path d={`M ${x1} ${y1} Q ${x1 + dx * 0.2 + nx * len * 0.45} ${y1 + dy * 0.2 + ny * len * 0.45} ${x2} ${y2}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" /></>}
-              {selected && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
-            </g>
-          );
+          return <g key={a.id} onMouseDown={(e) => startMove(e, "architecture", a.id, a.x1, a.y1)}>
+            {a.kind === "wall" && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={Math.max(4, (a.thickness ?? 0.15) * PX_PER_M)} strokeLinecap="square" />}
+            {a.kind === "window" && <><line x1={x1 + nx * 3} y1={y1 + ny * 3} x2={x2 + nx * 3} y2={y2 + ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /><line x1={x1 - nx * 3} y1={y1 - ny * 3} x2={x2 - nx * 3} y2={y2 - ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /></>}
+            {a.kind === "door" && <><line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} /><path d={`M ${x1} ${y1} Q ${x1 + dx * 0.2 + nx * len * 0.45} ${y1 + dy * 0.2 + ny * len * 0.45} ${x2} ${y2}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" /></>}
+            {selected && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
+          </g>;
         })}
 
         {visible.eletrodutos && doc.conduits.map((c) => {
           const path = conduitPath(doc, c); if (path.length < 2) return null;
-          const selected = isSel("conduit", c.id);
-          const middle = path[Math.floor(path.length / 2)];
-          const stroke = selected ? "var(--primary)" : "var(--layer-conduit)";
-          const dash = c.type === "underground" ? "3 5" : undefined;
-          return (
-            <g key={c.id} onMouseDown={(e) => { e.stopPropagation(); onSelect({ type: "conduit", id: c.id }); }}>
-              <polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke={stroke} strokeWidth={selected ? 3.5 : 2.5} strokeDasharray={dash} strokeLinecap="round" strokeLinejoin="round" opacity={c.type === "ceiling" ? 0.72 : 1} />
-              <text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M - 7} textAnchor="middle" fill="var(--layer-conduit)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(conduitLength(doc, c))}</text>
-              {selected && (c.route ?? []).map((p, index) => <circle key={index} cx={p.x * PX_PER_M} cy={p.y * PX_PER_M} r={5.5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} onMouseDown={(e) => startBendMove(e, c.id, index)} />)}
-            </g>
-          );
+          const selected = isSel("conduit", c.id), middle = path[Math.floor(path.length / 2)];
+          const stroke = selected ? "var(--primary)" : "var(--layer-conduit)", dash = c.type === "underground" ? "3 5" : undefined;
+          return <g key={c.id} onMouseDown={(e) => { e.stopPropagation(); onSelect({ type: "conduit", id: c.id }); }}>
+            <polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke={stroke} strokeWidth={selected ? 3.5 : 2.5} strokeDasharray={dash} strokeLinecap="round" strokeLinejoin="round" opacity={c.type === "ceiling" ? 0.72 : 1} />
+            <text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M - 7} textAnchor="middle" fill="var(--layer-conduit)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(conduitLength(doc, c))}</text>
+            {selected && (c.route ?? []).map((p, index) => <circle key={index} cx={p.x * PX_PER_M} cy={p.y * PX_PER_M} r={5.5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} onMouseDown={(e) => startBendMove(e, c.id, index)} />)}
+          </g>;
         })}
 
-        {visible.quadro && doc.panels.map((p) => (
-          <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${p.x * PX_PER_M} ${p.y * PX_PER_M})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "conduit" ? "cell" : "move" }}>
-            <rect x={p.x * PX_PER_M - 20} y={p.y * PX_PER_M - 14} width={40} height={28} rx={3} fill="var(--surface)" stroke={isSel("panel", p.id) || conduitFrom === p.id ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2} />
-            <text x={p.x * PX_PER_M} y={p.y * PX_PER_M + 4} textAnchor="middle" fill="var(--layer-panel)" fontSize={11} fontFamily="var(--font-mono)">{p.name}</text>
-          </g>
-        ))}
+        {visible.fiacao && wireRuns.flatMap((run) => run.conduitIds.map((conduitId, index) => {
+          const conduit = doc.conduits.find((c) => c.id === conduitId); if (!conduit) return null;
+          const path = conduitPath(doc, conduit); if (path.length < 2) return null;
+          const middle = path[Math.floor(path.length / 2)];
+          return <g key={`${run.id}-${conduitId}`} pointerEvents="none">
+            <polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke="var(--primary)" strokeWidth={1.1} strokeDasharray="1 3" opacity={0.85} />
+            {index === 0 && <text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M + 11} textAnchor="middle" fill="var(--primary)" fontSize={8.5} fontFamily="var(--font-mono)">{run.circuitId}: {run.roles.join("/")}</text>}
+          </g>;
+        }))}
+
+        {visible.quadro && doc.panels.map((p) => <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${p.x * PX_PER_M} ${p.y * PX_PER_M})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "conduit" ? "cell" : "move" }}>
+          <rect x={p.x * PX_PER_M - 20} y={p.y * PX_PER_M - 14} width={40} height={28} rx={3} fill="var(--surface)" stroke={isSel("panel", p.id) || conduitFrom === p.id ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2} />
+          <text x={p.x * PX_PER_M} y={p.y * PX_PER_M + 4} textAnchor="middle" fill="var(--layer-panel)" fontSize={11} fontFamily="var(--font-mono)">{p.name}</text>
+        </g>)}
 
         {doc.points.map((p) => {
           const def = CATALOG_BY_KIND[p.kind]; if (!def || !visible[def.layer]) return null;
-          const active = isSel("point", p.id) || conduitFrom === p.id;
-          const mirror = p.mirrored ? -1 : 1;
-          return <g key={p.id} transform={`translate(${p.x * PX_PER_M} ${p.y * PX_PER_M}) rotate(${p.rotation ?? 0}) scale(${mirror} 1)`} onMouseDown={(e) => startMove(e, "point", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "conduit" ? "cell" : "move" }}>{active && <circle r={16} fill="var(--primary)" fillOpacity={0.18} stroke="var(--primary)" strokeWidth={1.5} />}<SymbolGlyph kind={p.kind} /><text y={22} textAnchor="middle" fill={kindColor(p.kind)} fontSize={9.5} fontFamily="var(--font-mono)" transform={`scale(${mirror} 1)`}>{p.label}{p.circuit ? ` · ${p.circuit}` : ""}</text></g>;
+          const active = isSel("point", p.id) || conduitFrom === p.id, mirror = p.mirrored ? -1 : 1;
+          return <g key={p.id} transform={`translate(${p.x * PX_PER_M} ${p.y * PX_PER_M}) rotate(${p.rotation ?? 0}) scale(${mirror} 1)`} onMouseDown={(e) => startMove(e, "point", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "conduit" ? "cell" : "move" }}>
+            {active && <circle r={16} fill="var(--primary)" fillOpacity={0.18} stroke="var(--primary)" strokeWidth={1.5} />}
+            <SymbolGlyph kind={p.kind} height={p.height} />
+            <text y={22} textAnchor="middle" fill={kindColor(p.kind)} fontSize={9.5} fontFamily="var(--font-mono)" transform={`scale(${mirror} 1)`}>{p.label}{p.circuit ? ` · ${p.circuit}` : ""}</text>
+          </g>;
         })}
 
         {drawRect && <rect x={Math.min(drawRect.x0, drawRect.x1) * PX_PER_M} y={Math.min(drawRect.y0, drawRect.y1) * PX_PER_M} width={Math.abs(drawRect.x1 - drawRect.x0) * PX_PER_M} height={Math.abs(drawRect.y1 - drawRect.y0) * PX_PER_M} fill="var(--primary)" fillOpacity={0.1} stroke="var(--primary)" strokeWidth={2} strokeDasharray="6 4" />}
