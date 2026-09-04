@@ -8,7 +8,7 @@ import { PlanCanvas, type Selection, type Tool } from "@/components/plan/PlanCan
 import { LibraryPanel } from "@/components/plan/LibraryPanel";
 import { PropertiesPanel } from "@/components/plan/PropertiesPanel";
 import { CircuitsSummary } from "@/components/plan/CircuitsSummary";
-import { CircuitManager } from "@/components/plan/CircuitManager";
+import { EngineeringWorkspace } from "@/components/plan/EngineeringWorkspace";
 import { normalizeProjectDocument } from "@/lib/circuits";
 import { EMPTY_DOCUMENT, LAYERS, summarize, uid, type ComponentKind, type LayerId, type PlanDocument } from "@/lib/electrical";
 import { cn } from "@/lib/utils";
@@ -170,10 +170,10 @@ function EditorPage() {
           <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("select")} />
           <div className={cn("pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-1.5 text-xs text-muted-foreground")}>{activeTool?.hint} · Ctrl+C/V duplicar · R girar · M espelhar</div>
         </main>
-        <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-border bg-sidebar">
+        <aside className="flex w-[430px] shrink-0 flex-col overflow-y-auto border-l border-border bg-sidebar">
           <div className="min-h-[320px]"><PropertiesPanel doc={doc} selection={selection} summary={summary} onChange={update} onSelect={setSelection} /></div>
           <CircuitsSummary doc={doc} />
-          <CircuitManager doc={doc} onChange={update} />
+          <EngineeringWorkspace doc={doc} onChange={update} />
         </aside>
       </div>
       {!isLoading && !project && <div className="p-6"><Button onClick={() => navigate({ to: "/projetos" })}>Projeto não encontrado</Button></div>}
