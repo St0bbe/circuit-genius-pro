@@ -189,7 +189,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
       const draft = segment; setSegment(null);
       if (Math.hypot(draft.x1 - draft.x0, draft.y1 - draft.y0) >= 0.25) {
         const id = uid();
-        onChange((d) => ({ ...d, architecture: [...d.architecture, { id, kind: draft.kind, x1: draft.x0, y1: draft.y0, x2: draft.x1, y2: draft.y1, thickness: draft.kind === "wall" ? 0.15 : undefined, openingDirection: draft.kind === "door" ? "left" : undefined }] }));
+        onChange((d) => ({ ...d, architecture: [...d.architecture, { id, kind: draft.kind, x1: draft.x0, y1: draft.y0, x2: draft.x1, y2: draft.y1, thickness: draft.kind === "wall" ? 0.15 : undefined, openingDirection: draft.kind === "door" ? "left" : undefined, ...(draft.kind === "door" ? { openingAngle: 90 } : {}) }] } as PlanDocument));
         onSelect({ type: "architecture", id });
         if (draft.kind !== "wall") onToolDone();
       }
@@ -244,11 +244,15 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           const labelWorldX = r.labelX ?? (r.x + 10 / PX_PER_M);
           const labelWorldY = r.labelY ?? (r.y + 22 / PX_PER_M);
           const labelX = labelWorldX * PX_PER_M, labelY = labelWorldY * PX_PER_M;
+          const anchorWorldX = r.x + r.w / 2, anchorWorldY = r.y + r.h / 2;
+          const anchorX = anchorWorldX * PX_PER_M, anchorY = anchorWorldY * PX_PER_M;
           const roomShapeProps = { onMouseDown: (e: React.MouseEvent<SVGElement>) => startMove(e, "room", r.id, r.x, r.y) };
           return <g key={r.id}>
             {r.points && r.points.length >= 3
               ? <polygon {...roomShapeProps} points={r.points.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />
               : <rect {...roomShapeProps} x={r.x * PX_PER_M} y={r.y * PX_PER_M} width={r.w * PX_PER_M} height={r.h * PX_PER_M} fill="var(--surface)" fillOpacity={0.55} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={selected ? 4 : 3} />}
+            <line x1={anchorX} y1={anchorY} x2={labelX - 5} y2={labelY} stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={0.9} opacity={0.7} pointerEvents="none" />
+            <circle cx={anchorX} cy={anchorY} r={2.2} fill={selected ? "var(--primary)" : "var(--muted-foreground)"} opacity={0.75} pointerEvents="none" />
             <g onMouseDown={(e) => startRoomLabelMove(e, r.id, labelWorldX, labelWorldY)} style={{ cursor: tool === "select" ? "move" : undefined }}>
               <rect x={labelX - 5} y={labelY - 15} width={Math.max(118, r.name.length * 7)} height={39} rx={3} fill="var(--surface)" fillOpacity={selected ? 0.9 : 0.55} stroke={selected ? "var(--primary)" : "transparent"} strokeWidth={1} />
               <text x={labelX} y={labelY} fill="var(--foreground)" fontSize={13} fontFamily="var(--font-sans)">{r.name}</text>
@@ -261,11 +265,24 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           const x1 = a.x1 * PX_PER_M, y1 = a.y1 * PX_PER_M, x2 = a.x2 * PX_PER_M, y2 = a.y2 * PX_PER_M;
           const selected = isSel("architecture", a.id), dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
           const nx = -dy / len, ny = dx / len;
+          const door = a.kind === "door" ? a as typeof a & { openingAngle?: number } : null;
+          const openingAngle = Math.min(180, Math.max(15, door?.openingAngle ?? 90));
+          const directionSign = door?.openingDirection === "right" ? -1 : 1;
+          const radians = directionSign * openingAngle * Math.PI / 180;
+          const openX = x1 + dx * Math.cos(radians) - dy * Math.sin(radians);
+          const openY = y1 + dx * Math.sin(radians) + dy * Math.cos(radians);
+          const largeArc = openingAngle > 180 ? 1 : 0;
+          const sweep = directionSign > 0 ? 1 : 0;
           return <g key={a.id} onMouseDown={(e) => startMove(e, "architecture", a.id, a.x1, a.y1)}>
             {a.kind === "wall" && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={Math.max(4, (a.thickness ?? 0.15) * PX_PER_M)} strokeLinecap="square" />}
             {a.kind === "window" && <><line x1={x1 + nx * 3} y1={y1 + ny * 3} x2={x2 + nx * 3} y2={y2 + ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /><line x1={x1 - nx * 3} y1={y1 - ny * 3} x2={x2 - nx * 3} y2={y2 - ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /></>}
-            {a.kind === "door" && <><line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} /><path d={`M ${x1} ${y1} Q ${x1 + dx * 0.2 + nx * len * 0.45} ${y1 + dy * 0.2 + ny * len * 0.45} ${x2} ${y2}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" /></>}
-            {selected && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
+            {door && <>
+              <line x1={x1} y1={y1} x2={openX} y2={openY} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} />
+              <path d={`M ${x2} ${y2} A ${len} ${len} 0 ${largeArc} ${sweep} ${openX} ${openY}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" />
+              <circle cx={x1} cy={y1} r={2.5} fill={selected ? "var(--primary)" : "var(--foreground)"} />
+              {selected && <text x={(x1 + openX) / 2} y={(y1 + openY) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={9} fontFamily="var(--font-mono)">{openingAngle}° · {door.openingDirection === "right" ? "direita" : "esquerda"}</text>}
+            </>}
+            {selected && a.kind !== "door" && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
           </g>;
         })}
 
