@@ -1,5 +1,5 @@
 import { getCircuits } from "@/lib/circuits";
-import { nodePosition, uid, type Conduit, type PlanDocument, type PlanVertex } from "@/lib/electrical";
+import { nodePosition, uid, type Conduit, type Panel, type PlanDocument, type PlanVertex } from "@/lib/electrical";
 import type { WireRole } from "@/lib/wiring";
 
 export type WireRun = {
@@ -39,10 +39,25 @@ function distance(doc: PlanDocument, aId: string, bId: string) {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
+function panelKind(panel: Panel) {
+  return panel.kind ?? "distribution";
+}
+
+function resolveUpstreamSupply(doc: PlanDocument, distribution: Panel): Panel | null {
+  if (distribution.upstreamPanelId) {
+    const explicit = doc.panels.find((p) => p.id === distribution.upstreamPanelId && panelKind(p) === "supply");
+    if (explicit) return explicit;
+  }
+  return doc.panels.find((p) => panelKind(p) === "supply") ?? null;
+}
+
+function feederConduitId(panelId: string) {
+  return `auto-feeder-${panelId}`;
+}
+
 /**
- * Creates a simple Manhattan tree for each configured circuit.
- * Generated routes are intentionally editable: every conduit is persisted as a normal
- * Conduit and its intermediate route points can be dragged in the canvas afterwards.
+ * Gera primeiro os alimentadores QA -> QD e depois as árvores dos circuitos finais.
+ * Todos os trechos continuam sendo eletrodutos normais/editáveis na planta.
  */
 export function autoRouteConduits(doc: PlanDocument): AutoRouteResult {
   const circuits = getCircuits(doc).filter((c) => c.enabled);
@@ -50,8 +65,27 @@ export function autoRouteConduits(doc: PlanDocument): AutoRouteResult {
   const generated: Conduit[] = [];
   const skippedCircuits: string[] = [];
 
+  const distributionPanels = doc.panels.filter((p) => panelKind(p) === "distribution");
+  for (const distribution of distributionPanels) {
+    const supply = resolveUpstreamSupply(doc, distribution);
+    if (!supply || supply.id === distribution.id) continue;
+    const a = nodePosition(doc, supply.id);
+    const b = nodePosition(doc, distribution.id);
+    if (!a || !b) continue;
+    generated.push({
+      id: feederConduitId(distribution.id),
+      from: supply.id,
+      to: distribution.id,
+      diameter: 32,
+      type: "normal",
+      route: manhattanRoute(a, b),
+    });
+  }
+
   for (const circuit of circuits) {
-    const panelId = circuit.panelId ?? doc.panels[0]?.id ?? null;
+    const preferredDistribution = doc.panels.find((p) => p.id === circuit.panelId && panelKind(p) === "distribution");
+    const fallbackDistribution = doc.panels.find((p) => panelKind(p) === "distribution");
+    const panelId = preferredDistribution?.id ?? circuit.panelId ?? fallbackDistribution?.id ?? doc.panels[0]?.id ?? null;
     const loads = doc.points.filter((p) => p.circuit.trim().toUpperCase() === circuit.id.toUpperCase());
     if (!panelId || loads.length === 0 || !nodePosition(doc, panelId)) {
       skippedCircuits.push(circuit.id);
@@ -110,15 +144,31 @@ function rolesForCircuit(doc: PlanDocument, circuitId: string): WireRole[] {
 }
 
 /**
- * Associates conductors to the existing conduit network. Geometry remains owned by
- * the conduit, so moving a bend after automatic routing also changes the wire path.
+ * Associa fiação aos alimentadores QA -> QD e aos eletrodutos dos circuitos finais.
+ * O alimentador recebe F/F2/PE como configuração inicial, podendo ser detalhado depois.
  */
 export function autoRouteWiring(doc: PlanDocument): AutoRouteResult {
   const runs: WireRun[] = [];
   const skippedCircuits: string[] = [];
+
+  for (const distribution of doc.panels.filter((p) => panelKind(p) === "distribution")) {
+    const supply = resolveUpstreamSupply(doc, distribution);
+    if (!supply) continue;
+    const conduit = doc.conduits.find((c) => c.id === feederConduitId(distribution.id) || (c.from === supply.id && c.to === distribution.id) || (c.from === distribution.id && c.to === supply.id));
+    if (!conduit) continue;
+    runs.push({
+      id: `wire-feeder-${distribution.id}`,
+      circuitId: `ALIM-${distribution.name}`,
+      conduitIds: [conduit.id],
+      roles: ["F", "F2", "PE"],
+      automatic: true,
+    });
+  }
+
   for (const circuit of getCircuits(doc).filter((c) => c.enabled)) {
     const nodeIds = new Set(doc.points.filter((p) => p.circuit.trim().toUpperCase() === circuit.id).map((p) => p.id));
-    const panelId = circuit.panelId ?? doc.panels[0]?.id ?? null;
+    const fallbackDistribution = doc.panels.find((p) => panelKind(p) === "distribution");
+    const panelId = circuit.panelId ?? fallbackDistribution?.id ?? doc.panels[0]?.id ?? null;
     if (panelId) nodeIds.add(panelId);
     const conduitIds = doc.conduits.filter((c) => nodeIds.has(c.from) || nodeIds.has(c.to)).map((c) => c.id);
     if (!conduitIds.length) {
