@@ -10,6 +10,7 @@ import { PropertiesPanel } from "@/components/plan/PropertiesPanel";
 import { CircuitsSummary } from "@/components/plan/CircuitsSummary";
 import { EngineeringWorkspace } from "@/components/plan/EngineeringWorkspace";
 import { ProjectToolsPanel } from "@/components/plan/ProjectToolsPanel";
+import { CompletionPanel } from "@/components/plan/CompletionPanel";
 import { normalizeProjectDocument } from "@/lib/circuits";
 import { EMPTY_DOCUMENT, LAYERS, summarize, uid, type ComponentKind, type LayerId, type PlanDocument } from "@/lib/electrical";
 import { cn } from "@/lib/utils";
@@ -176,6 +177,7 @@ function EditorPage() {
           <CircuitsSummary doc={doc} />
           <EngineeringWorkspace doc={doc} onChange={update} />
           <ProjectToolsPanel doc={doc} onChange={update} />
+          <CompletionPanel doc={doc} onChange={update} />
         </aside>
       </div>
       {!isLoading && !project && <div className="p-6"><Button onClick={() => navigate({ to: "/projetos" })}>Projeto não encontrado</Button></div>}
