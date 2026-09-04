@@ -18,8 +18,6 @@ type GlyphProps = { kind: ComponentKind; size?: number; height?: number };
 /**
  * Símbolos de planta baseados na convenção brasileira tradicional da NBR 5444:1989.
  * A origem (0,0) dos símbolos de parede é o ponto exato de fixação na parede.
- * A norma foi cancelada, mas sua simbologia tradicional ainda é amplamente usada
- * como convenção gráfica em projetos prediais brasileiros.
  */
 export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
   const c = kindColor(kind);
@@ -31,25 +29,37 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
   const outletHeight = height ?? CATALOG_BY_KIND[kind]?.height ?? 0.3;
   const outletLevel: "low" | "mid" | "high" = outletHeight >= 1.8 ? "high" : outletHeight >= 0.8 ? "mid" : "low";
 
-  // Tomada de parede: o ponto (0,0) encosta exatamente na parede.
-  // O pequeno traço representa a ligação parede-símbolo e o triângulo aponta
-  // perpendicularmente para o ambiente. A rotação é definida pelo PlanCanvas.
   const outletTriangle = (count = 1, floor = false, suffix?: string) => {
-    const trianglePath = "M 5 -6 L 15 0 L 5 6 Z";
-    const base = <>
-      {!floor && <line x1="0" y1="0" x2="5" y2="0" {...common} />}
-      <path d={trianglePath} {...common} fill={outletLevel === "high" ? c : "none"} />
-      {outletLevel === "mid" && <path d="M 5 0 L 15 0 L 5 6 Z" fill={c} stroke="none" />}
-      {count > 1 && <text x="10" y="-8" textAnchor="middle" fill={c} fontSize="6" fontWeight="700" fontFamily="var(--font-mono)">{count}</text>}
-      {suffix && <text x="17" y="3" fill={c} fontSize="5" fontWeight="700" fontFamily="var(--font-mono)">{suffix}</text>}
+    if (floor) {
+      return <>
+        <rect x="-10" y="-10" width="20" height="20" rx="1" {...common} />
+        <path d="M -5 -5.5 L 5 0 L -5 5.5 Z" {...common} />
+      </>;
+    }
+
+    const spacing = 7;
+    const offsets = Array.from({ length: count }, (_, index) => (index - (count - 1) / 2) * spacing);
+
+    const renderTriangle = (offsetY: number, index: number) => {
+      const top = offsetY - 3.2;
+      const bottom = offsetY + 3.2;
+      const outline = `M 5 ${top} L 15 ${offsetY} L 5 ${bottom} Z`;
+      const lowerHalf = `M 5 ${offsetY} L 15 ${offsetY} L 5 ${bottom} Z`;
+
+      return <g key={index}>
+        <line x1="0" y1={offsetY} x2="5" y2={offsetY} {...common} />
+        <path d={outline} {...common} fill={outletLevel === "high" ? c : "none"} />
+        {outletLevel === "mid" && <path d={lowerHalf} fill={c} stroke="none" />}
+      </g>;
+    };
+
+    return <>
+      {offsets.map(renderTriangle)}
+      {suffix && <text x="18" y="3" fill={c} fontSize="5" fontWeight="700" fontFamily="var(--font-mono)">{suffix}</text>}
     </>;
-    return floor ? <><rect x="-10" y="-10" width="20" height="20" rx="1" {...common} /><path d="M -5 -5.5 L 5 0 L -5 5.5 Z" {...common} /></> : base;
   };
 
-  const wall = <g opacity="0.95">
-    <line x1="0" y1="-7" x2="0" y2="7" {...common} />
-  </g>;
-
+  const wall = <g opacity="0.95"><line x1="0" y1="-7" x2="0" y2="7" {...common} /></g>;
   const equipmentBox = (label: string) => <><rect x="-9" y="-8" width="18" height="16" {...common} />{text(label)}</>;
 
   let body: React.ReactNode;
