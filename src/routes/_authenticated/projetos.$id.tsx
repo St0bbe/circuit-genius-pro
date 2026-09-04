@@ -8,7 +8,9 @@ import { PlanCanvas, type Selection, type Tool } from "@/components/plan/PlanCan
 import { LibraryPanel } from "@/components/plan/LibraryPanel";
 import { PropertiesPanel } from "@/components/plan/PropertiesPanel";
 import { CircuitsSummary } from "@/components/plan/CircuitsSummary";
-import { EMPTY_DOCUMENT, LAYERS, normalizeDocument, summarize, uid, type ComponentKind, type LayerId, type PlanDocument } from "@/lib/electrical";
+import { CircuitManager } from "@/components/plan/CircuitManager";
+import { normalizeProjectDocument } from "@/lib/circuits";
+import { EMPTY_DOCUMENT, LAYERS, summarize, uid, type ComponentKind, type LayerId, type PlanDocument } from "@/lib/electrical";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/projetos/$id")({
@@ -53,7 +55,7 @@ function EditorPage() {
 
   useEffect(() => {
     if (project && !loaded.current) {
-      setDoc(normalizeDocument(project.document));
+      setDoc(normalizeProjectDocument(project.document));
       loaded.current = true;
     }
   }, [project]);
@@ -111,6 +113,7 @@ function EditorPage() {
       if ((e.key === "Delete" || e.key === "Backspace") && selection) {
         e.preventDefault();
         update((d) => ({
+          ...d,
           rooms: d.rooms.filter((r) => selection.type !== "room" || r.id !== selection.id),
           architecture: d.architecture.filter((a) => selection.type !== "architecture" || a.id !== selection.id),
           points: d.points.filter((p) => selection.type !== "point" || p.id !== selection.id),
@@ -167,9 +170,10 @@ function EditorPage() {
           <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("select")} />
           <div className={cn("pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-1.5 text-xs text-muted-foreground")}>{activeTool?.hint} · Ctrl+C/V duplicar · R girar · M espelhar</div>
         </main>
-        <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-sidebar">
-          <div className="min-h-0 flex-1"><PropertiesPanel doc={doc} selection={selection} summary={summary} onChange={update} onSelect={setSelection} /></div>
+        <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-border bg-sidebar">
+          <div className="min-h-[320px]"><PropertiesPanel doc={doc} selection={selection} summary={summary} onChange={update} onSelect={setSelection} /></div>
           <CircuitsSummary doc={doc} />
+          <CircuitManager doc={doc} onChange={update} />
         </aside>
       </div>
       {!isLoading && !project && <div className="p-6"><Button onClick={() => navigate({ to: "/projetos" })}>Projeto não encontrado</Button></div>}
