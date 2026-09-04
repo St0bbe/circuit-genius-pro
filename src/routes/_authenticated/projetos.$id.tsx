@@ -2,6 +2,32 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  ArrowLeft,
+  Box,
+  Cable,
+  Check,
+  ChevronDown,
+  DoorOpen,
+  FileText,
+  Hand,
+  Layers3,
+  Library,
+  Minus,
+  Monitor,
+  MousePointer2,
+  PanelRight,
+  Pencil,
+  Plus,
+  Redo2,
+  Route as RouteIcon,
+  Save,
+  Square,
+  Undo2,
+  Workflow,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { PlanCanvas, type Selection, type Tool } from "@/components/plan/PlanCanvas";
@@ -30,26 +56,27 @@ export const Route = createFileRoute("/_authenticated/projetos/$id")({
   component: EditorPage,
 });
 
-const TOOLS: { id: Tool; label: string; hint: string }[] = [
-  { id: "navigate", label: "↖ Navegar", hint: "Arraste em qualquer lugar para mover a visualização sem alterar o projeto" },
-  { id: "select", label: "Selecionar", hint: "Clique para selecionar, arraste para mover" },
-  { id: "room", label: "Ambiente", hint: "Arraste para criar um ambiente retangular" },
-  { id: "room_free", label: "Ambiente livre", hint: "Clique nos cantos do ambiente e clique no primeiro ponto para fechar" },
-  { id: "wall", label: "Parede", hint: "Arraste para desenhar uma parede" },
-  { id: "door", label: "Porta", hint: "Arraste sobre a parede para inserir uma porta" },
-  { id: "passage", label: "Passagem", hint: "Arraste sobre a parede para criar um vão sem folha de porta" },
-  { id: "window", label: "Janela", hint: "Arraste sobre a parede para inserir uma janela" },
-  { id: "point", label: "+ Adicionar ponto", hint: "Escolha primeiro o componente na biblioteca e depois clique na planta" },
-  { id: "panel_supply", label: "+ QA", hint: "Clique para posicionar o Quadro de Alimentação" },
-  { id: "panel_distribution", label: "+ QD", hint: "Clique para posicionar o Quadro de Distribuição" },
-  { id: "conduit", label: "Eletroduto", hint: "Clique em dois pontos/quadros; curvas são criadas e podem ser ajustadas" },
+type ToolDefinition = { id: Tool; label: string; hint: string; icon: LucideIcon };
+
+const TOOLS: ToolDefinition[] = [
+  { id: "navigate", label: "Navegar", icon: Hand, hint: "Arraste em qualquer lugar para mover a visualização sem alterar o projeto" },
+  { id: "select", label: "Selecionar", icon: MousePointer2, hint: "Clique para selecionar, arraste para mover" },
+  { id: "room", label: "Ambiente", icon: Square, hint: "Arraste para criar um ambiente retangular" },
+  { id: "room_free", label: "Ambiente livre", icon: Pencil, hint: "Clique nos cantos do ambiente e clique no primeiro ponto para fechar" },
+  { id: "wall", label: "Parede", icon: Minus, hint: "Arraste para desenhar uma parede" },
+  { id: "door", label: "Porta", icon: DoorOpen, hint: "Arraste sobre a parede para inserir uma porta" },
+  { id: "passage", label: "Passagem", icon: RouteIcon, hint: "Arraste sobre a parede para criar um vão sem folha de porta" },
+  { id: "window", label: "Janela", icon: Monitor, hint: "Arraste sobre a parede para inserir uma janela" },
+  { id: "point", label: "Adicionar ponto", icon: Plus, hint: "Escolha primeiro o componente na biblioteca e depois clique na planta" },
+  { id: "panel_supply", label: "QA", icon: Box, hint: "Clique para posicionar o Quadro de Alimentação" },
+  { id: "panel_distribution", label: "QD", icon: Box, hint: "Clique para posicionar o Quadro de Distribuição" },
+  { id: "conduit", label: "Eletroduto", icon: Cable, hint: "Clique em dois pontos/quadros; curvas são criadas e podem ser ajustadas" },
 ];
 
 const ARCHITECTURE_TOOL_IDS: Tool[] = ["wall", "room", "room_free", "passage", "window", "door"];
 const ARCHITECTURE_TOOLS = ARCHITECTURE_TOOL_IDS.map((id) => TOOLS.find((tool) => tool.id === id)!).filter(Boolean);
 const PRIMARY_TOOLS = TOOLS.filter((tool) => tool.id === "navigate" || tool.id === "select");
 const ELECTRICAL_TOOLS = TOOLS.filter((tool) => !ARCHITECTURE_TOOL_IDS.includes(tool.id) && tool.id !== "navigate" && tool.id !== "select");
-const ARCHITECTURE_ICON: Record<string, string> = { wall: "└", room: "▧", room_free: "⬚", passage: "┄", window: "▭", door: "◱" };
 
 const ALL_VISIBLE = Object.fromEntries(LAYERS.map((l) => [l.id, true])) as Record<LayerId, boolean>;
 type MobilePanel = "library" | "properties" | "summary" | null;
@@ -301,7 +328,10 @@ function EditorPage() {
       <header className="relative z-50 shrink-0 border-b border-border bg-sidebar">
         <div className="flex min-h-12 items-center justify-between gap-2 px-2 py-2 sm:px-3">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <Link to="/projetos" className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground sm:text-sm">← <span className="hidden sm:inline">Projetos</span></Link>
+            <Link to="/projetos" className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground sm:text-sm">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Projetos</span>
+            </Link>
             <div className="hidden h-5 w-px bg-border sm:block" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium leading-tight">{isLoading ? "Carregando..." : project?.name}</p>
@@ -310,25 +340,31 @@ function EditorPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button size="sm" variant="ghost" disabled={!canUndo} onClick={undo} title="Desfazer (Ctrl+Z)">↶ <span className="hidden md:inline">Desfazer</span></Button>
-            <Button size="sm" variant="ghost" disabled={!canRedo} onClick={redo} title="Refazer (Ctrl+Y / Ctrl+Shift+Z)">↷ <span className="hidden md:inline">Refazer</span></Button>
-            <Button size="sm" variant={mobilePanel === "summary" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "summary" ? null : "summary")}>Resumo</Button>
-            <Button className="xl:hidden" size="sm" variant={mobilePanel === "library" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "library" ? null : "library")}>Biblioteca</Button>
-            <Button className="xl:hidden" size="sm" variant={mobilePanel === "properties" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "properties" ? null : "properties")}>Painel</Button>
+            <Button size="sm" variant="ghost" disabled={!canUndo} onClick={undo} title="Desfazer (Ctrl+Z)"><Undo2 className="h-4 w-4" /><span className="hidden md:inline">Desfazer</span></Button>
+            <Button size="sm" variant="ghost" disabled={!canRedo} onClick={redo} title="Refazer (Ctrl+Y / Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /><span className="hidden md:inline">Refazer</span></Button>
+            <Button size="sm" variant={mobilePanel === "summary" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "summary" ? null : "summary")}><FileText className="h-4 w-4" />Resumo</Button>
+            <Button className="xl:hidden" size="sm" variant={mobilePanel === "library" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "library" ? null : "library")}><Library className="h-4 w-4" />Biblioteca</Button>
+            <Button className="xl:hidden" size="sm" variant={mobilePanel === "properties" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "properties" ? null : "properties")}><PanelRight className="h-4 w-4" />Painel</Button>
             <span className="hidden text-[10px] uppercase tracking-wide text-muted-foreground md:inline">{saving ? "salvando..." : dirty ? "pendente" : "salvo"}</span>
-            <Button size="sm" variant="secondary" onClick={() => void save()}>{saving ? "..." : "Salvar"}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void save()}><Save className="h-4 w-4" />{saving ? "Salvando..." : "Salvar"}</Button>
           </div>
         </div>
 
         <div className="scrollbar-none flex items-center gap-1 overflow-x-auto border-t border-border/60 px-2 py-1.5 sm:px-3 xl:justify-center">
-          {PRIMARY_TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}>{t.label}</Button>)}
+          {PRIMARY_TOOLS.map((t) => {
+            const Icon = t.icon;
+            return <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}><Icon className="h-4 w-4" />{t.label}</Button>;
+          })}
           <Button className="shrink-0" size="sm" variant={architectureToolActive || architectureMenuOpen ? "default" : "ghost"} onClick={() => setArchitectureMenuOpen((open) => !open)} aria-expanded={architectureMenuOpen} aria-haspopup="menu">
-            <span className="mr-1">▣</span> Elementos <span className={cn("ml-1 transition-transform", architectureMenuOpen && "rotate-180")}>⌄</span>
+            <Layers3 className="h-4 w-4" /> Elementos <ChevronDown className={cn("h-4 w-4 transition-transform", architectureMenuOpen && "rotate-180")} />
           </Button>
-          {ELECTRICAL_TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}>{t.label}</Button>)}
+          {ELECTRICAL_TOOLS.map((t) => {
+            const Icon = t.icon;
+            return <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}><Icon className="h-4 w-4" />{t.label}</Button>;
+          })}
           <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-          <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoConduits}>Auto eletrodutos</Button>
-          <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoWiring}>Auto fiação</Button>
+          <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoConduits}><Workflow className="h-4 w-4" />Auto eletrodutos</Button>
+          <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoWiring}><Cable className="h-4 w-4" />Auto fiação</Button>
         </div>
 
         {architectureMenuOpen && <>
@@ -339,14 +375,17 @@ function EditorPage() {
               <p className="mt-0.5 text-[11px] text-muted-foreground">Escolha o que deseja desenhar ou inserir.</p>
             </div>
             <div className="grid gap-1">
-              {ARCHITECTURE_TOOLS.map((item) => <button key={item.id} type="button" role="menuitem" className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground", tool === item.id && "bg-accent text-accent-foreground")} onClick={() => activateTool(item.id)}>
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border bg-background font-mono text-lg text-primary">{ARCHITECTURE_ICON[item.id]}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{item.label}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">{item.hint}</span>
-                </span>
-                {tool === item.id && <span className="text-primary">✓</span>}
-              </button>)}
+              {ARCHITECTURE_TOOLS.map((item) => {
+                const Icon = item.icon;
+                return <button key={item.id} type="button" role="menuitem" className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground", tool === item.id && "bg-accent text-accent-foreground")} onClick={() => activateTool(item.id)}>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border bg-background text-primary"><Icon className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{item.label}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">{item.hint}</span>
+                  </span>
+                  {tool === item.id && <Check className="h-4 w-4 text-primary" />}
+                </button>;
+              })}
             </div>
           </div>
         </>}
@@ -376,23 +415,23 @@ function EditorPage() {
 
         <aside className={cn("absolute inset-y-0 left-0 z-40 w-[min(88vw,320px)] transform bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "library" ? "translate-x-0" : "-translate-x-full")}>
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Escolha o ponto para adicionar</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="flex items-center gap-2 text-sm font-medium"><Library className="h-4 w-4" />Escolha o ponto para adicionar</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}><X className="h-4 w-4" />Fechar</Button></div>
             <div className="min-h-0 flex-1 overflow-y-auto"><LibraryPanel activeKind={activeKind} onPick={pickComponent} visible={visible} onToggleLayer={(l) => setVisible((v) => ({ ...v, [l]: !v[l] }))} /></div>
           </div>
         </aside>
 
         <aside className={cn("absolute inset-y-0 right-0 z-40 flex w-[min(94vw,460px)] transform flex-col bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "properties" ? "translate-x-0" : "translate-x-full")}>
-          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Projeto e propriedades</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="flex items-center gap-2 text-sm font-medium"><PanelRight className="h-4 w-4" />Projeto e propriedades</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}><X className="h-4 w-4" />Fechar</Button></div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{propertiesContent}</div>
         </aside>
 
         <aside className={cn("absolute inset-y-0 right-0 z-50 flex w-[min(92vw,380px)] transform flex-col border-l border-border bg-sidebar shadow-2xl transition-transform duration-200", mobilePanel === "summary" ? "translate-x-0" : "translate-x-full")}>
-          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Resumo da planta</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="flex items-center gap-2 text-sm font-medium"><FileText className="h-4 w-4" />Resumo da planta</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}><X className="h-4 w-4" />Fechar</Button></div>
           <div className="min-h-0 flex-1 overflow-y-auto">{summaryContent}</div>
         </aside>
       </div>
 
-      {!isLoading && !project && <div className="absolute inset-0 z-[100] grid place-items-center bg-background/90 p-6"><Button onClick={() => navigate({ to: "/projetos" })}>Projeto não encontrado</Button></div>}
+      {!isLoading && !project && <div className="absolute inset-0 z-[100] grid place-items-center bg-background/90 p-6"><Button onClick={() => navigate({ to: "/projetos" })}><ArrowLeft className="h-4 w-4" />Projeto não encontrado</Button></div>}
     </div>
   );
 }
