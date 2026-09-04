@@ -14,6 +14,7 @@ import { CompletionPanel } from "@/components/plan/CompletionPanel";
 import { PlatformPanel } from "@/components/plan/PlatformPanel";
 import { PlanReferenceOverlay } from "@/components/plan/PlanReferenceOverlay";
 import { SmartActionsPanel } from "@/components/plan/SmartActionsPanel";
+import { autoRouteConduits, autoRouteWiring } from "@/lib/auto-routing";
 import { normalizeProjectDocument } from "@/lib/circuits";
 import { EMPTY_DOCUMENT, LAYERS, summarize, uid, type ComponentKind, type LayerId, type PlanDocument } from "@/lib/electrical";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
 
 const ALL_VISIBLE = Object.fromEntries(LAYERS.map((l) => [l.id, true])) as Record<LayerId, boolean>;
 type MobilePanel = "library" | "properties" | null;
+type HistoryState = { past: PlanDocument[]; future: PlanDocument[] };
 
 function EditorPage() {
   const { id } = Route.useParams();
@@ -54,8 +56,10 @@ function EditorPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
+  const [, setHistoryVersion] = useState(0);
   const loaded = useRef(false);
   const clipboard = useRef<{ type: NonNullable<Selection>["type"]; data: unknown } | null>(null);
+  const history = useRef<HistoryState>({ past: [], future: [] });
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -69,12 +73,46 @@ function EditorPage() {
   useEffect(() => {
     if (project && !loaded.current) {
       setDoc(normalizeProjectDocument(project.document));
+      history.current = { past: [], future: [] };
+      setHistoryVersion((v) => v + 1);
       loaded.current = true;
     }
   }, [project]);
 
   const update = useCallback((updater: (d: PlanDocument) => PlanDocument) => {
-    setDoc((d) => updater(d));
+    setDoc((current) => {
+      const next = updater(current);
+      if (next === current) return current;
+      history.current.past.push(current);
+      if (history.current.past.length > 100) history.current.past.shift();
+      history.current.future = [];
+      setHistoryVersion((v) => v + 1);
+      return next;
+    });
+    setDirty(true);
+  }, []);
+
+  const undo = useCallback(() => {
+    setDoc((current) => {
+      const previous = history.current.past.pop();
+      if (!previous) return current;
+      history.current.future.push(current);
+      setHistoryVersion((v) => v + 1);
+      return previous;
+    });
+    setSelection(null);
+    setDirty(true);
+  }, []);
+
+  const redo = useCallback(() => {
+    setDoc((current) => {
+      const next = history.current.future.pop();
+      if (!next) return current;
+      history.current.past.push(current);
+      setHistoryVersion((v) => v + 1);
+      return next;
+    });
+    setSelection(null);
     setDirty(true);
   }, []);
 
@@ -128,21 +166,37 @@ function EditorPage() {
     setTool("select");
   }, [update]);
 
+  const runAutoConduits = useCallback(() => {
+    const result = autoRouteConduits(doc);
+    if (!result.created) {
+      toast.warning("Não foi possível gerar eletrodutos. Confira quadro, circuitos e cargas associadas.");
+      return;
+    }
+    update(() => result.doc);
+    setVisible((v) => ({ ...v, eletrodutos: true }));
+    toast.success(`${result.created} trecho(s) de eletroduto gerados. Você pode editar as curvas manualmente.`);
+  }, [doc, update]);
+
+  const runAutoWiring = useCallback(() => {
+    const result = autoRouteWiring(doc);
+    if (!result.created) {
+      toast.warning("Nenhuma fiação foi gerada. Gere ou desenhe os eletrodutos e confira os circuitos primeiro.");
+      return;
+    }
+    update(() => result.doc);
+    setVisible((v) => ({ ...v, fiacao: true }));
+    toast.success(`${result.created} circuito(s) com fiação automática. O trajeto acompanha os eletrodutos editáveis.`);
+  }, [doc, update]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
       const modifier = e.ctrlKey || e.metaKey;
-      if (modifier && e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        copySelection();
-        return;
-      }
-      if (modifier && e.key.toLowerCase() === "v") {
-        e.preventDefault();
-        pasteSelection();
-        return;
-      }
+      if (modifier && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (modifier && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
+      if (modifier && e.key.toLowerCase() === "c") { e.preventDefault(); copySelection(); return; }
+      if (modifier && e.key.toLowerCase() === "v") { e.preventDefault(); pasteSelection(); return; }
       if ((e.key === "Delete" || e.key === "Backspace") && selection) {
         e.preventDefault();
         update((d) => ({
@@ -180,10 +234,12 @@ function EditorPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [copySelection, pasteSelection, selection, update]);
+  }, [copySelection, pasteSelection, redo, selection, undo, update]);
 
   const summary = useMemo(() => summarize(doc), [doc]);
   const activeTool = TOOLS.find((t) => t.id === tool);
+  const canUndo = history.current.past.length > 0;
+  const canRedo = history.current.future.length > 0;
 
   const closeMobilePanels = () => setMobilePanel(null);
   const pickComponent = (kind: ComponentKind) => {
@@ -220,6 +276,8 @@ function EditorPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            <Button size="sm" variant="ghost" disabled={!canUndo} onClick={undo} title="Desfazer (Ctrl+Z)">↶ <span className="hidden md:inline">Desfazer</span></Button>
+            <Button size="sm" variant="ghost" disabled={!canRedo} onClick={redo} title="Refazer (Ctrl+Y / Ctrl+Shift+Z)">↷ <span className="hidden md:inline">Refazer</span></Button>
             <Button className="xl:hidden" size="sm" variant={mobilePanel === "library" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "library" ? null : "library")}>Biblioteca</Button>
             <Button className="xl:hidden" size="sm" variant={mobilePanel === "properties" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "properties" ? null : "properties")}>Painel</Button>
             <span className="hidden text-[10px] uppercase tracking-wide text-muted-foreground md:inline">{saving ? "salvando..." : dirty ? "pendente" : "salvo"}</span>
@@ -228,9 +286,10 @@ function EditorPage() {
         </div>
 
         <div className="scrollbar-none flex items-center gap-1 overflow-x-auto border-t border-border/60 px-2 py-1.5 sm:px-3 xl:justify-center">
-          {TOOLS.map((t) => (
-            <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => { setTool(t.id); closeMobilePanels(); }}>{t.label}</Button>
-          ))}
+          {TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => { setTool(t.id); closeMobilePanels(); }}>{t.label}</Button>)}
+          <span className="mx-1 h-5 w-px shrink-0 bg-border" />
+          <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoConduits}>Auto eletrodutos</Button>
+          <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoWiring}>Auto fiação</Button>
         </div>
       </header>
 
@@ -246,7 +305,7 @@ function EditorPage() {
           </div>
           <div className={cn("pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full border border-border bg-card/95 px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm sm:bottom-4 sm:px-4 sm:text-xs")}>
             <span className="sm:hidden">{activeTool?.hint}</span>
-            <span className="hidden sm:inline">{activeTool?.hint} · Ctrl+C/V duplicar · R girar · M espelhar</span>
+            <span className="hidden sm:inline">{activeTool?.hint} · Ctrl+Z/Y desfazer/refazer · Ctrl+C/V duplicar · R girar · M espelhar</span>
           </div>
         </main>
 
@@ -256,40 +315,20 @@ function EditorPage() {
 
         {mobilePanel && <button aria-label="Fechar painel" type="button" className="absolute inset-0 z-30 bg-background/60 backdrop-blur-[1px] xl:hidden" onClick={closeMobilePanels} />}
 
-        <aside className={cn(
-          "absolute inset-y-0 left-0 z-40 w-[min(88vw,320px)] transform bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden",
-          mobilePanel === "library" ? "translate-x-0" : "-translate-x-full",
-        )}>
+        <aside className={cn("absolute inset-y-0 left-0 z-40 w-[min(88vw,320px)] transform bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "library" ? "translate-x-0" : "-translate-x-full")}>
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-              <span className="text-sm font-medium">Biblioteca e camadas</span>
-              <Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <LibraryPanel activeKind={activeKind} onPick={pickComponent} visible={visible} onToggleLayer={(l) => setVisible((v) => ({ ...v, [l]: !v[l] }))} />
-            </div>
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Biblioteca e camadas</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+            <div className="min-h-0 flex-1 overflow-y-auto"><LibraryPanel activeKind={activeKind} onPick={pickComponent} visible={visible} onToggleLayer={(l) => setVisible((v) => ({ ...v, [l]: !v[l] }))} /></div>
           </div>
         </aside>
 
-        <aside className={cn(
-          "absolute inset-y-0 right-0 z-40 flex w-[min(94vw,460px)] transform flex-col bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden",
-          mobilePanel === "properties" ? "translate-x-0" : "translate-x-full",
-        )}>
-          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-sm font-medium">Projeto e propriedades</span>
-            <Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {propertiesContent}
-          </div>
+        <aside className={cn("absolute inset-y-0 right-0 z-40 flex w-[min(94vw,460px)] transform flex-col bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "properties" ? "translate-x-0" : "translate-x-full")}>
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Projeto e propriedades</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{propertiesContent}</div>
         </aside>
       </div>
 
-      {!isLoading && !project && (
-        <div className="absolute inset-0 z-[100] grid place-items-center bg-background/90 p-6">
-          <Button onClick={() => navigate({ to: "/projetos" })}>Projeto não encontrado</Button>
-        </div>
-      )}
+      {!isLoading && !project && <div className="absolute inset-0 z-[100] grid place-items-center bg-background/90 p-6"><Button onClick={() => navigate({ to: "/projetos" })}>Projeto não encontrado</Button></div>}
     </div>
   );
 }
