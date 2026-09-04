@@ -22,7 +22,7 @@ import {
 import { getWireRuns } from "@/lib/auto-routing";
 import { SymbolGlyph, kindColor } from "./SymbolGlyph";
 
-export type Tool = "select" | "room" | "room_free" | "wall" | "door" | "window" | "point" | "panel" | "conduit";
+export type Tool = "navigate" | "select" | "room" | "room_free" | "wall" | "door" | "window" | "point" | "panel" | "conduit";
 export type Selection = { type: "room" | "architecture" | "point" | "panel" | "conduit"; id: string } | null;
 
 type Props = {
@@ -92,7 +92,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
 
   const onBackgroundDown = (e: React.MouseEvent) => {
     const w = toWorld(e.clientX, e.clientY);
-    if (e.button === 1 || e.altKey || tool === "select") {
+    if (e.button === 1 || e.altKey || tool === "select" || tool === "navigate") {
       if (tool === "select" && e.button === 0 && !e.altKey) onSelect(null);
       dragRef.current = { kind: "pan", ox: e.clientX - view.x, oy: e.clientY - view.y };
       return;
@@ -233,7 +233,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   };
 
   const isSel = (type: string, id: string) => selection?.type === type && selection.id === id;
-  const cursor = tool === "select" ? "default" : ["room", "room_free", "wall", "door", "window"].includes(tool) ? "crosshair" : tool === "conduit" ? "cell" : "copy";
+  const cursor = tool === "navigate" ? "grab" : tool === "select" ? "default" : ["room", "room_free", "wall", "door", "window"].includes(tool) ? "crosshair" : tool === "conduit" ? "cell" : "copy";
   const wireRuns = getWireRuns(doc);
 
   return (
@@ -273,7 +273,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           const path = conduitPath(doc, c); if (path.length < 2) return null;
           const selected = isSel("conduit", c.id), middle = path[Math.floor(path.length / 2)];
           const stroke = selected ? "var(--primary)" : "var(--layer-conduit)", dash = c.type === "underground" ? "3 5" : undefined;
-          return <g key={c.id} onMouseDown={(e) => { e.stopPropagation(); onSelect({ type: "conduit", id: c.id }); }}>
+          return <g key={c.id} onMouseDown={(e) => { if (tool === "navigate") return; e.stopPropagation(); onSelect({ type: "conduit", id: c.id }); }}>
             <polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke={stroke} strokeWidth={selected ? 3.5 : 2.5} strokeDasharray={dash} strokeLinecap="round" strokeLinejoin="round" opacity={c.type === "ceiling" ? 0.72 : 1} />
             <text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M - 7} textAnchor="middle" fill="var(--layer-conduit)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(conduitLength(doc, c))}</text>
             {selected && (c.route ?? []).map((p, index) => <circle key={index} cx={p.x * PX_PER_M} cy={p.y * PX_PER_M} r={5.5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} onMouseDown={(e) => startBendMove(e, c.id, index)} />)}
@@ -290,7 +290,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           </g>;
         }))}
 
-        {visible.quadro && doc.panels.map((p) => <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${p.x * PX_PER_M} ${p.y * PX_PER_M})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "conduit" ? "cell" : "move" }}>
+        {visible.quadro && doc.panels.map((p) => <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${p.x * PX_PER_M} ${p.y * PX_PER_M})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "navigate" ? "grab" : tool === "conduit" ? "cell" : "move" }}>
           <rect x={p.x * PX_PER_M - 20} y={p.y * PX_PER_M - 14} width={40} height={28} rx={3} fill="var(--surface)" stroke={isSel("panel", p.id) || conduitFrom === p.id ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2} />
           <text x={p.x * PX_PER_M} y={p.y * PX_PER_M + 4} textAnchor="middle" fill="var(--layer-panel)" fontSize={11} fontFamily="var(--font-mono)">{p.name}</text>
         </g>)}
@@ -298,7 +298,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
         {doc.points.map((p) => {
           const def = CATALOG_BY_KIND[p.kind]; if (!def || !visible[def.layer]) return null;
           const active = isSel("point", p.id) || conduitFrom === p.id, mirror = p.mirrored ? -1 : 1;
-          return <g key={p.id} transform={`translate(${p.x * PX_PER_M} ${p.y * PX_PER_M}) rotate(${p.rotation ?? 0}) scale(${mirror} 1)`} onMouseDown={(e) => startMove(e, "point", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "conduit" ? "cell" : "move" }}>
+          return <g key={p.id} transform={`translate(${p.x * PX_PER_M} ${p.y * PX_PER_M}) rotate(${p.rotation ?? 0}) scale(${mirror} 1)`} onMouseDown={(e) => startMove(e, "point", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "navigate" ? "grab" : tool === "conduit" ? "cell" : "move" }}>
             {active && <circle r={16} fill="var(--primary)" fillOpacity={0.18} stroke="var(--primary)" strokeWidth={1.5} />}
             <SymbolGlyph kind={p.kind} height={p.height} />
             <text y={22} textAnchor="middle" fill={kindColor(p.kind)} fontSize={9.5} fontFamily="var(--font-mono)" transform={`scale(${mirror} 1)`}>{p.label}{p.circuit ? ` · ${p.circuit}` : ""}</text>
