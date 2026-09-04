@@ -13,6 +13,7 @@ import {
   roomPerimeter,
   type ComponentKind,
   type ConduitType,
+  type PanelKind,
   type PlanDocument,
 } from "@/lib/electrical";
 import type { Selection } from "./PlanCanvas";
@@ -62,23 +63,13 @@ export function PropertiesPanel({ doc, selection, onChange, onSelect }: Props) {
   const resizeRoom = (dimension: "w" | "h", rawValue: number) => {
     if (!room) return;
     const value = Math.max(MIN_ROOM_SIZE, Number.isFinite(rawValue) ? rawValue : MIN_ROOM_SIZE);
-    onChange((d) => ({
-      ...d,
-      rooms: d.rooms.map((r) => {
-        if (r.id !== room.id) return r;
-        if (!r.points?.length) return { ...r, [dimension]: value };
-        const oldW = Math.max(r.w, 0.0001);
-        const oldH = Math.max(r.h, 0.0001);
-        const scaleX = dimension === "w" ? value / oldW : 1;
-        const scaleY = dimension === "h" ? value / oldH : 1;
-        return {
-          ...r,
-          w: dimension === "w" ? value : r.w,
-          h: dimension === "h" ? value : r.h,
-          points: r.points.map((p) => ({ x: r.x + (p.x - r.x) * scaleX, y: r.y + (p.y - r.y) * scaleY })),
-        };
-      }),
-    }));
+    onChange((d) => ({ ...d, rooms: d.rooms.map((r) => {
+      if (r.id !== room.id) return r;
+      if (!r.points?.length) return { ...r, [dimension]: value };
+      const oldW = Math.max(r.w, 0.0001), oldH = Math.max(r.h, 0.0001);
+      const scaleX = dimension === "w" ? value / oldW : 1, scaleY = dimension === "h" ? value / oldH : 1;
+      return { ...r, w: dimension === "w" ? value : r.w, h: dimension === "h" ? value : r.h, points: r.points.map((p) => ({ x: r.x + (p.x - r.x) * scaleX, y: r.y + (p.y - r.y) * scaleY })) };
+    }) }));
   };
 
   const resizeArchitecture = (rawLength: number) => {
@@ -113,56 +104,37 @@ export function PropertiesPanel({ doc, selection, onChange, onSelect }: Props) {
       <Field label="Identificação"><Input value={point.label} onChange={(e) => patchPoint({ label: e.target.value })} /></Field>
       {isOutlet && <>
         <Field label="Tipo de tomada"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={point.kind} onChange={(e) => changePointKind(e.target.value as ComponentKind)}>{OUTLET_KINDS.map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></Field>
-        <div className="space-y-1"><Label className="tech-label">Altura / símbolo</Label><div className="grid grid-cols-3 gap-1.5"><Button size="sm" variant={point.height < 0.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 0.3 })}>Baixa 0,30 m</Button><Button size="sm" variant={point.height >= 0.8 && point.height < 1.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 1.3 })}>Média 1,30 m</Button><Button size="sm" variant={point.height >= 1.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 2 })}>Alta 2,00 m</Button></div><p className="text-[11px] text-muted-foreground">Convenção NBR 5444: baixa vazada, média meio preenchida e alta preenchida. Uma altura personalizada mantém a faixa visual correspondente.</p></div>
+        <div className="space-y-1"><Label className="tech-label">Altura / símbolo</Label><div className="grid grid-cols-3 gap-1.5"><Button size="sm" variant={point.height < 0.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 0.3 })}>Baixa 0,30 m</Button><Button size="sm" variant={point.height >= 0.8 && point.height < 1.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 1.3 })}>Média 1,30 m</Button><Button size="sm" variant={point.height >= 1.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 2 })}>Alta 2,00 m</Button></div></div>
       </>}
       <div className="grid grid-cols-2 gap-2">
         <Field label="Potência (W / VA)"><Input type="number" min="0" value={point.power} onChange={(e) => patchPoint({ power: Number(e.target.value) || 0 })} /></Field>
         <Field label="Tensão (V)"><Input type="number" value={point.voltage} onChange={(e) => patchPoint({ voltage: Number(e.target.value) || 0 })} /></Field>
         <Field label="Altura (m)"><Input type="number" step="0.05" value={point.height} onChange={(e) => patchPoint({ height: Math.max(0, Number(e.target.value) || 0) })} /></Field>
         <Field label="Circuito"><Input placeholder="C01" value={point.circuit} onChange={(e) => patchPoint({ circuit: e.target.value.toUpperCase() })} /></Field>
-        <Field label="Rotação"><Input type="number" step="90" value={point.rotation ?? 0} onChange={(e) => patchPoint({ rotation: Number(e.target.value) || 0 })} /></Field>
-        <Field label="Posição X (m)"><Input type="number" step="0.05" value={point.x} onChange={(e) => patchPoint({ x: Number(e.target.value) || 0 })} /></Field>
-        <Field label="Posição Y (m)"><Input type="number" step="0.05" value={point.y} onChange={(e) => patchPoint({ y: Number(e.target.value) || 0 })} /></Field>
       </div>
       {isOutlet && <Row k="Nível da tomada" v={outletLevel(point.height)} />}
-      <Row k="Espelhado" v={point.mirrored ? "Sim" : "Não"} /><Row k="Corrente estimada" v={`${(point.power / (point.voltage || 127)).toFixed(2)} A`} />
+      <Row k="Corrente estimada" v={`${(point.power / (point.voltage || 127)).toFixed(2)} A`} />
     </div>}
 
-    {room && <div className="space-y-3">
-      <Field label="Nome do ambiente"><Input value={room.name} onChange={(e) => onChange((d) => ({ ...d, rooms: d.rooms.map((r) => r.id === room.id ? { ...r, name: e.target.value } : r) }))} /></Field>
-      <div className="grid grid-cols-2 gap-2"><Field label="Largura (m)"><Input type="number" step="0.05" min={MIN_ROOM_SIZE} value={room.w} onChange={(e) => resizeRoom("w", Number(e.target.value))} /></Field><Field label="Comprimento (m)"><Input type="number" step="0.05" min={MIN_ROOM_SIZE} value={room.h} onChange={(e) => resizeRoom("h", Number(e.target.value))} /></Field></div>
-      <p className="text-[11px] text-muted-foreground">Ao alterar largura ou comprimento, o ambiente é redimensionado imediatamente na planta. Em ambientes de forma livre, os vértices são escalados proporcionalmente.</p>
-      <Row k="Forma" v={room.points ? `Livre (${room.points.length} vértices)` : "Retangular"} /><Row k="Área" v={`${roomArea(room).toFixed(2)} m²`} /><Row k="Perímetro" v={fmtM(roomPerimeter(room))} />
-    </div>}
+    {room && <div className="space-y-3"><Field label="Nome do ambiente"><Input value={room.name} onChange={(e) => onChange((d) => ({ ...d, rooms: d.rooms.map((r) => r.id === room.id ? { ...r, name: e.target.value } : r) }))} /></Field><div className="grid grid-cols-2 gap-2"><Field label="Largura (m)"><Input type="number" step="0.05" min={MIN_ROOM_SIZE} value={room.w} onChange={(e) => resizeRoom("w", Number(e.target.value))} /></Field><Field label="Comprimento (m)"><Input type="number" step="0.05" min={MIN_ROOM_SIZE} value={room.h} onChange={(e) => resizeRoom("h", Number(e.target.value))} /></Field></div><Row k="Área" v={`${roomArea(room).toFixed(2)} m²`} /><Row k="Perímetro" v={fmtM(roomPerimeter(room))} /></div>}
 
     {architecture && <div className="space-y-3">
-      <div><p className="font-mono text-base text-primary">{architecture.kind === "wall" ? "Parede" : architecture.kind === "door" ? "Porta" : String(architecture.kind) === "passage" ? "Passagem sem porta" : "Janela"}</p><p className="text-xs text-muted-foreground">Elemento arquitetônico</p></div>
+      <div><p className="font-mono text-base text-primary">{architecture.kind === "wall" ? "Parede" : architecture.kind === "door" ? "Porta" : String(architecture.kind) === "passage" ? "Passagem sem porta" : "Janela"}</p></div>
       <Field label={architecture.kind === "wall" ? "Comprimento (m)" : "Largura (m)"}><Input type="number" min={MIN_ARCH_LENGTH} step="0.05" value={Number(architectureLength(architecture).toFixed(2))} onChange={(e) => resizeArchitecture(Number(e.target.value))} /></Field>
-      <p className="text-[11px] text-muted-foreground">A medida altera o elemento imediatamente na planta, mantendo o ponto inicial e a direção atuais.</p>
       {architecture.kind === "wall" && <Field label="Espessura (m)"><Input type="number" step="0.01" min="0.05" value={architecture.thickness ?? 0.15} onChange={(e) => onChange((d) => ({ ...d, architecture: d.architecture.map((a) => a.id === architecture.id ? { ...a, thickness: Math.max(0.05, Number(e.target.value) || 0.15) } : a) }))} /></Field>}
-      {door && <div className="space-y-3 rounded-md border border-border p-3">
-        <Field label="Dobradiça / lado da folha"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={door.openingDirection ?? "left"} onChange={(e) => patchDoor({ openingDirection: e.target.value as "left" | "right" })}><option value="left">Esquerda</option><option value="right">Direita</option></select></Field>
-        <Field label="Sentido da abertura"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={(door.openingSide ?? "down") === "up" ? "outside" : "inside"} onChange={(e) => patchDoor({ openingSide: e.target.value === "outside" ? "up" : "down" })}><option value="inside">Abrir para dentro</option><option value="outside">Abrir para fora</option></select></Field>
-        <Field label="Ângulo de abertura (°)"><Input type="number" min="15" max="180" step="5" value={door.openingAngle ?? 90} onChange={(e) => patchDoor({ openingAngle: Math.min(180, Math.max(15, Number(e.target.value) || 90)) })} /></Field>
-        <div className="grid grid-cols-3 gap-1.5">{[45, 90, 120].map((angle) => <Button key={angle} size="sm" variant={(door.openingAngle ?? 90) === angle ? "default" : "secondary"} onClick={() => patchDoor({ openingAngle: angle })}>{angle}°</Button>)}</div>
-        <p className="text-[11px] text-muted-foreground">A folha e o arco são atualizados imediatamente conforme a dobradiça, o sentido dentro/fora e o ângulo escolhidos.</p>
-      </div>}
-      <Row k="Início" v={`${architecture.x1.toFixed(2)} ; ${architecture.y1.toFixed(2)} m`} /><Row k="Fim" v={`${architecture.x2.toFixed(2)} ; ${architecture.y2.toFixed(2)} m`} />
+      {door && <div className="space-y-3 rounded-md border border-border p-3"><Field label="Dobradiça / lado da folha"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={door.openingDirection ?? "left"} onChange={(e) => patchDoor({ openingDirection: e.target.value as "left" | "right" })}><option value="left">Esquerda</option><option value="right">Direita</option></select></Field><Field label="Sentido da abertura"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={(door.openingSide ?? "down") === "up" ? "outside" : "inside"} onChange={(e) => patchDoor({ openingSide: e.target.value === "outside" ? "up" : "down" })}><option value="inside">Abrir para dentro</option><option value="outside">Abrir para fora</option></select></Field><Field label="Ângulo de abertura (°)"><Input type="number" min="15" max="180" step="5" value={door.openingAngle ?? 90} onChange={(e) => patchDoor({ openingAngle: Math.min(180, Math.max(15, Number(e.target.value) || 90)) })} /></Field></div>}
     </div>}
 
     {panel && <div className="space-y-3">
+      <div><p className="font-mono text-base text-primary">{(panel.kind ?? "distribution") === "supply" ? "Quadro de Alimentação (QA)" : "Quadro de Distribuição (QD)"}</p><p className="text-xs text-muted-foreground">Nó elétrico integrado ao roteamento automático</p></div>
+      <Field label="Tipo de quadro"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={panel.kind ?? "distribution"} onChange={(e) => onChange((d) => ({ ...d, panels: d.panels.map((p) => p.id === panel.id ? { ...p, kind: e.target.value as PanelKind, upstreamPanelId: e.target.value === "supply" ? null : p.upstreamPanelId } : p) }))}><option value="supply">Quadro de Alimentação (QA)</option><option value="distribution">Quadro de Distribuição (QD)</option></select></Field>
       <Field label="Nome do quadro"><Input value={panel.name} onChange={(e) => onChange((d) => ({ ...d, panels: d.panels.map((p) => p.id === panel.id ? { ...p, name: e.target.value } : p) }))} /></Field>
+      {(panel.kind ?? "distribution") === "distribution" && <Field label="Alimentado por"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={panel.upstreamPanelId ?? ""} onChange={(e) => onChange((d) => ({ ...d, panels: d.panels.map((p) => p.id === panel.id ? { ...p, upstreamPanelId: e.target.value || null } : p) }))}><option value="">QA automático (primeiro disponível)</option>{doc.panels.filter((p) => (p.kind ?? "distribution") === "supply" && p.id !== panel.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>}
       <div className="grid grid-cols-2 gap-2"><Field label="Posição X (m)"><Input type="number" step="0.05" value={panel.x} onChange={(e) => onChange((d) => ({ ...d, panels: d.panels.map((p) => p.id === panel.id ? { ...p, x: Number(e.target.value) || 0 } : p) }))} /></Field><Field label="Posição Y (m)"><Input type="number" step="0.05" value={panel.y} onChange={(e) => onChange((d) => ({ ...d, panels: d.panels.map((p) => p.id === panel.id ? { ...p, y: Number(e.target.value) || 0 } : p) }))} /></Field></div>
       <Row k="Eletrodutos ligados" v={String(doc.conduits.filter((c) => c.from === panel.id || c.to === panel.id).length)} />
     </div>}
 
-    {conduit && <div className="space-y-3">
-      <Field label="Tipo de eletroduto"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={conduit.type ?? "normal"} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, type: e.target.value as ConduitType } : c) }))}><option value="normal">Normal / parede — linha contínua</option><option value="ceiling">Teto — linha contínua</option><option value="underground">Subterrâneo — pontilhado</option></select></Field>
-      <Field label="Diâmetro (mm)"><Input type="number" min="1" step="1" value={conduit.diameter} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, diameter: Math.max(1, Number(e.target.value) || 1) } : c) }))} /></Field>
-      <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={addConduitBend}>Adicionar curva</Button><Button size="sm" variant="secondary" disabled={!conduit.route?.length} onClick={() => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, route: (c.route ?? []).slice(0, -1) } : c) }))}>Remover curva</Button></div>
-      <p className="text-xs text-muted-foreground">Rotas manuais ou automáticas continuam editáveis: arraste os pontos circulares do trecho para reposicionar as curvas.</p>
-      <Row k="Comprimento" v={fmtM(conduitLength(doc, conduit))} /><Row k="Curvas" v={String(conduit.route?.length ?? 0)} /><Row k="Origem" v={nodeLabel(doc, conduit.from)} /><Row k="Destino" v={nodeLabel(doc, conduit.to)} />
-    </div>}
+    {conduit && <div className="space-y-3"><Field label="Tipo de eletroduto"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={conduit.type ?? "normal"} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, type: e.target.value as ConduitType } : c) }))}><option value="normal">Normal / parede</option><option value="ceiling">Teto</option><option value="underground">Subterrâneo</option></select></Field><Field label="Diâmetro (mm)"><Input type="number" min="1" step="1" value={conduit.diameter} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, diameter: Math.max(1, Number(e.target.value) || 1) } : c) }))} /></Field><Button size="sm" variant="secondary" onClick={addConduitBend}>Adicionar curva</Button><Row k="Comprimento" v={fmtM(conduitLength(doc, conduit))} /><Row k="Origem" v={nodeLabel(doc, conduit.from)} /><Row k="Destino" v={nodeLabel(doc, conduit.to)} /></div>}
 
     {selection && <Button variant="destructive" size="sm" className="mt-4" onClick={remove}>Excluir elemento</Button>}
   </div>;
