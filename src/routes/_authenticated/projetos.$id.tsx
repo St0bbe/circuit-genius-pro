@@ -31,12 +31,13 @@ export const Route = createFileRoute("/_authenticated/projetos/$id")({
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "select", label: "Selecionar", hint: "Clique para selecionar, arraste para mover" },
   { id: "room", label: "Ambiente", hint: "Arraste para criar um ambiente retangular" },
+  { id: "room_free", label: "Ambiente livre", hint: "Clique nos cantos do ambiente e clique no primeiro ponto para fechar" },
   { id: "wall", label: "Parede", hint: "Arraste para desenhar uma parede" },
-  { id: "door", label: "Porta", hint: "Arraste para inserir uma porta" },
-  { id: "window", label: "Janela", hint: "Arraste para inserir uma janela" },
+  { id: "door", label: "Porta", hint: "Arraste sobre a parede para inserir uma porta" },
+  { id: "window", label: "Janela", hint: "Arraste sobre a parede para inserir uma janela" },
   { id: "point", label: "Ponto", hint: "Clique para inserir o componente escolhido" },
   { id: "panel", label: "Quadro", hint: "Clique para posicionar o quadro" },
-  { id: "conduit", label: "Eletroduto", hint: "Clique em dois pontos/quadros para ligar" },
+  { id: "conduit", label: "Eletroduto", hint: "Clique em dois pontos/quadros; curvas são criadas e podem ser ajustadas" },
 ];
 
 const ALL_VISIBLE = Object.fromEntries(LAYERS.map((l) => [l.id, true])) as Record<LayerId, boolean>;
@@ -110,7 +111,7 @@ function EditorPage() {
     update((d) => {
       if (clip.type === "room") {
         const x = clip.data as PlanDocument["rooms"][number];
-        return { ...d, rooms: [...d.rooms, { ...x, id: newId, x: x.x + 0.5, y: x.y + 0.5, name: `${x.name} cópia` }] };
+        return { ...d, rooms: [...d.rooms, { ...x, id: newId, x: x.x + 0.5, y: x.y + 0.5, points: x.points?.map((p) => ({ x: p.x + 0.5, y: p.y + 0.5 })), name: `${x.name} cópia` }] };
       }
       if (clip.type === "point") {
         const x = clip.data as PlanDocument["points"][number];
@@ -130,7 +131,7 @@ function EditorPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
       const modifier = e.ctrlKey || e.metaKey;
       if (modifier && e.key.toLowerCase() === "c") {
         e.preventDefault();
@@ -170,6 +171,7 @@ function EditorPage() {
       if (e.key === "Escape") setTool("select");
       if (e.key.toLowerCase() === "v") setTool("select");
       if (e.key.toLowerCase() === "a") setTool("room");
+      if (e.key.toLowerCase() === "f") setTool("room_free");
       if (e.key.toLowerCase() === "w") setTool("wall");
       if (e.key.toLowerCase() === "d") setTool("door");
       if (e.key.toLowerCase() === "j") setTool("window");
