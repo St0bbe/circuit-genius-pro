@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CATALOG,
   CATALOG_BY_KIND,
   GRID_M,
   PX_PER_M,
@@ -52,7 +53,21 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   const [segment, setSegment] = useState<SegmentDraft | null>(null);
   const [roomPolygon, setRoomPolygon] = useState<PlanVertex[]>([]);
   const [conduitFrom, setConduitFrom] = useState<string | null>(null);
+  const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const dragRef = useRef<DragState | null>(null);
+
+  const editingPoint = editingPointId ? doc.points.find((p) => p.id === editingPointId) : undefined;
+
+  const patchEditingPoint = (patch: Partial<PlanDocument["points"][number]>) => {
+    if (!editingPointId) return;
+    onChange((d) => ({ ...d, points: d.points.map((p) => p.id === editingPointId ? { ...p, ...patch } : p) }));
+  };
+
+  const changeEditingKind = (kind: ComponentKind) => {
+    const def = CATALOG_BY_KIND[kind];
+    if (!def) return;
+    patchEditingPoint({ kind, power: def.power, voltage: def.voltage, height: def.height });
+  };
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -209,12 +224,39 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
 
       {visible.quadro && doc.panels.map((p) => { const isSupply = (p.kind ?? "distribution") === "supply", selected = isSel("panel", p.id) || conduitFrom === p.id, cx = p.x * PX_PER_M, cy = p.y * PX_PER_M; return <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${cx} ${cy})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)}><rect x={cx - 22} y={cy - 17} width={44} height={34} rx={3} fill="var(--surface)" stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2.2} />{isSupply ? <><rect x={cx - 18} y={cy - 13} width={36} height={26} fill="none" stroke="var(--layer-panel)" /><path d={`M ${cx - 3} ${cy - 10} L ${cx + 3} ${cy - 2} L ${cx} ${cy - 2} L ${cx + 4} ${cy + 9} L ${cx - 5} ${cy + 1} L ${cx - 1} ${cy + 1} Z`} fill="var(--layer-panel)" /></> : <><line x1={cx - 15} y1={cy - 8} x2={cx + 15} y2={cy - 8} stroke="var(--layer-panel)" /><line x1={cx - 15} y1={cy} x2={cx + 15} y2={cy} stroke="var(--layer-panel)" /><line x1={cx - 15} y1={cy + 8} x2={cx + 15} y2={cy + 8} stroke="var(--layer-panel)" /></>}<text x={cx} y={cy + 4} textAnchor="middle" fill={selected ? "var(--primary)" : "var(--layer-panel)"} fontSize={10} fontWeight="700">{isSupply ? "QA" : "QD"}</text><text x={cx} y={cy + 29} textAnchor="middle" fill="var(--layer-panel)" fontSize={9.5}>{p.name}</text></g>; })}
 
-      {doc.points.map((p) => { const def = CATALOG_BY_KIND[p.kind]; if (!def || !visible[def.layer]) return null; const active = isSel("point", p.id) || conduitFrom === p.id, mirror = p.mirrored ? -1 : 1; return <g key={p.id} transform={`translate(${p.x * PX_PER_M} ${p.y * PX_PER_M}) rotate(${p.rotation ?? 0}) scale(${mirror} 1)`} onMouseDown={(e) => startMove(e, "point", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)}>{active && <circle r={16} fill="var(--primary)" fillOpacity={0.18} stroke="var(--primary)" strokeWidth={1.5} />}<SymbolGlyph kind={p.kind} height={p.height} /><text y={22} textAnchor="middle" fill={kindColor(p.kind)} fontSize={9.5} transform={`scale(${mirror} 1)`}>{p.label}{p.circuit ? ` · ${p.circuit}` : ""}</text></g>; })}
+      {doc.points.map((p) => { const def = CATALOG_BY_KIND[p.kind]; if (!def || !visible[def.layer]) return null; const active = isSel("point", p.id) || conduitFrom === p.id, mirror = p.mirrored ? -1 : 1; return <g key={p.id} transform={`translate(${p.x * PX_PER_M} ${p.y * PX_PER_M}) rotate(${p.rotation ?? 0}) scale(${mirror} 1)`} onMouseDown={(e) => startMove(e, "point", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} onDoubleClick={(e) => { e.stopPropagation(); onSelect({ type: "point", id: p.id }); setEditingPointId(p.id); }}>{active && <circle r={16} fill="var(--primary)" fillOpacity={0.18} stroke="var(--primary)" strokeWidth={1.5} />}<SymbolGlyph kind={p.kind} height={p.height} /><text y={22} textAnchor="middle" fill={kindColor(p.kind)} fontSize={9.5} transform={`scale(${mirror} 1)`}>{p.label}{p.circuit ? ` · ${p.circuit}` : ""}</text></g>; })}
 
       {drawRect && <rect x={Math.min(drawRect.x0, drawRect.x1) * PX_PER_M} y={Math.min(drawRect.y0, drawRect.y1) * PX_PER_M} width={Math.abs(drawRect.x1 - drawRect.x0) * PX_PER_M} height={Math.abs(drawRect.y1 - drawRect.y0) * PX_PER_M} fill="var(--primary)" fillOpacity={0.1} stroke="var(--primary)" strokeWidth={2} strokeDasharray="6 4" />}
       {roomPolygon.length > 0 && <g><polyline points={roomPolygon.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke="var(--primary)" strokeWidth={2.5} />{roomPolygon.map((p, i) => <circle key={i} cx={p.x * PX_PER_M} cy={p.y * PX_PER_M} r={i === 0 ? 6 : 4} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} />)}</g>}
       {segment && <line x1={segment.x0 * PX_PER_M} y1={segment.y0 * PX_PER_M} x2={segment.x1 * PX_PER_M} y2={segment.y1 * PX_PER_M} stroke="var(--primary)" strokeWidth={segment.kind === "wall" ? 7 : 3} strokeDasharray={segment.kind === "wall" ? undefined : "6 4"} />}
     </g>
+
+    {editingPoint && <foreignObject x="18" y="48" width="390" height="520">
+      <div xmlns="http://www.w3.org/1999/xhtml" className="rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div><p className="text-sm font-semibold">Editar ponto</p><p className="text-xs text-muted-foreground">Duplo clique abre esta edição rápida</p></div>
+          <button type="button" className="rounded px-2 py-1 text-sm hover:bg-accent" onClick={() => setEditingPointId(null)}>✕</button>
+        </div>
+        <div className="grid gap-2 text-xs">
+          <label className="grid gap-1">Sistema / tipo<select className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={editingPoint.kind} onChange={(e) => changeEditingKind(e.target.value as ComponentKind)}>{CATALOG.map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label>
+          <label className="grid gap-1">Identificação<input className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={editingPoint.label} onChange={(e) => patchEditingPoint({ label: e.target.value })} /></label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="grid gap-1">Potência (W/VA)<input className="h-9 rounded-md border border-input bg-background px-2 text-sm" type="number" min="0" value={editingPoint.power} onChange={(e) => patchEditingPoint({ power: Number(e.target.value) || 0 })} /></label>
+            <label className="grid gap-1">Tensão (V)<select className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={editingPoint.voltage} onChange={(e) => patchEditingPoint({ voltage: Number(e.target.value) })}><option value="127">127 V</option><option value="220">220 V</option></select></label>
+            <label className="grid gap-1">Altura (m)<input className="h-9 rounded-md border border-input bg-background px-2 text-sm" type="number" min="0" step="0.05" value={editingPoint.height} onChange={(e) => patchEditingPoint({ height: Math.max(0, Number(e.target.value) || 0) })} /></label>
+            <label className="grid gap-1">Circuito<input className="h-9 rounded-md border border-input bg-background px-2 text-sm" placeholder="C01" value={editingPoint.circuit} onChange={(e) => patchEditingPoint({ circuit: e.target.value.toUpperCase() })} /></label>
+          </div>
+          {CATALOG_BY_KIND[editingPoint.kind]?.layer === "tomadas" && <div className="grid grid-cols-3 gap-1.5 pt-1">
+            <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height < 0.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 0.3 })}>Baixa</button>
+            <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height >= 0.8 && editingPoint.height < 1.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 1.3 })}>Média</button>
+            <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height >= 1.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 2 })}>Alta</button>
+          </div>}
+          <label className="grid gap-1">Observações<textarea className="min-h-16 rounded-md border border-input bg-background p-2 text-sm" value={editingPoint.notes ?? ""} onChange={(e) => patchEditingPoint({ notes: e.target.value })} /></label>
+          <div className="flex justify-end pt-1"><button type="button" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => setEditingPointId(null)}>Concluir</button></div>
+        </div>
+      </div>
+    </foreignObject>}
+
     <g><rect x={12} y={12} width={240} height={26} rx={4} fill="var(--surface)" fillOpacity={0.9} /><text x={22} y={29} fill="var(--muted-foreground)" fontSize={11}>zoom {(view.z * 100).toFixed(0)}% · grade {GRID_M * 100}cm</text></g>
   </svg>;
 }
