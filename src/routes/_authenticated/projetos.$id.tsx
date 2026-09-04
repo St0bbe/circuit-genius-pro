@@ -12,6 +12,7 @@ import { EngineeringWorkspace } from "@/components/plan/EngineeringWorkspace";
 import { ProjectToolsPanel } from "@/components/plan/ProjectToolsPanel";
 import { CompletionPanel } from "@/components/plan/CompletionPanel";
 import { PlatformPanel } from "@/components/plan/PlatformPanel";
+import { PlanReferenceOverlay } from "@/components/plan/PlanReferenceOverlay";
 import { normalizeProjectDocument } from "@/lib/circuits";
 import { EMPTY_DOCUMENT, LAYERS, summarize, uid, type ComponentKind, type LayerId, type PlanDocument } from "@/lib/electrical";
 import { cn } from "@/lib/utils";
@@ -169,9 +170,10 @@ function EditorPage() {
 
       <div className="flex min-h-0 flex-1">
         <aside className="w-64 shrink-0"><LibraryPanel activeKind={activeKind} onPick={(k) => { setActiveKind(k); setTool("point"); }} visible={visible} onToggleLayer={(l) => setVisible((v) => ({ ...v, [l]: !v[l] }))} /></aside>
-        <main className="relative min-w-0 flex-1">
-          <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("select")} />
-          <div className={cn("pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-1.5 text-xs text-muted-foreground")}>{activeTool?.hint} · Ctrl+C/V duplicar · R girar · M espelhar</div>
+        <main className="relative min-w-0 flex-1 overflow-hidden">
+          <PlanReferenceOverlay doc={doc} />
+          <div className="absolute inset-0 z-10"><PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("select")} /></div>
+          <div className={cn("pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-1.5 text-xs text-muted-foreground")}>{activeTool?.hint} · Ctrl+C/V duplicar · R girar · M espelhar</div>
         </main>
         <aside className="flex w-[430px] shrink-0 flex-col overflow-y-auto border-l border-border bg-sidebar">
           <div className="min-h-[320px]"><PropertiesPanel doc={doc} selection={selection} summary={summary} onChange={update} onSelect={setSelection} /></div>
