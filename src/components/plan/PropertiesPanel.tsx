@@ -105,6 +105,17 @@ export function PropertiesPanel({ doc, selection, onChange, onSelect }: Props) {
       {isOutlet && <>
         <Field label="Tipo de tomada"><select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={point.kind} onChange={(e) => changePointKind(e.target.value as ComponentKind)}>{OUTLET_KINDS.map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></Field>
         <div className="space-y-1"><Label className="tech-label">Altura / símbolo</Label><div className="grid grid-cols-3 gap-1.5"><Button size="sm" variant={point.height < 0.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 0.3 })}>Baixa 0,30 m</Button><Button size="sm" variant={point.height >= 0.8 && point.height < 1.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 1.3 })}>Média 1,30 m</Button><Button size="sm" variant={point.height >= 1.8 ? "default" : "secondary"} onClick={() => patchPoint({ height: 2 })}>Alta 2,00 m</Button></div></div>
+        <div className="space-y-1">
+          <Label className="tech-label">Orientação na parede</Label>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[0, 90, 180, 270].map((angle) => {
+              const normalized = (((point.rotation ?? 0) % 360) + 360) % 360;
+              const label = angle === 0 ? "Direita" : angle === 90 ? "Baixo" : angle === 180 ? "Esquerda" : "Cima";
+              return <Button key={angle} size="sm" variant={normalized === angle ? "default" : "secondary"} onClick={() => patchPoint({ rotation: angle })}>{label}</Button>;
+            })}
+          </div>
+          <Button className="w-full" size="sm" variant="outline" onClick={() => patchPoint({ rotation: (((point.rotation ?? 0) + 90) % 360) })}>Girar 90°</Button>
+        </div>
       </>}
       <div className="grid grid-cols-2 gap-2">
         <Field label="Potência (W / VA)"><Input type="number" min="0" value={point.power} onChange={(e) => patchPoint({ power: Number(e.target.value) || 0 })} /></Field>
