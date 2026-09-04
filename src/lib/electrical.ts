@@ -21,11 +21,12 @@ export type ComponentKind =
   | "interruptor_simples" | "interruptor_paralelo" | "interruptor_intermediario" | "dimmer" | "rele" | "comando_sensor"
   | "tug" | "tug_dupla" | "tug_tripla" | "tug_usb" | "tue" | "tomada_equipamento" | "tomada_piso" | "tomada_externa"
   | "chuveiro" | "torneira_eletrica" | "forno" | "cooktop" | "microondas" | "maquina_lavar" | "maquina_secar"
-  | "ar_condicionado" | "bomba" | "motor" | "motor_portao" | "aquecedor" | "geladeira" | "freezer" | "lava_loucas";
+  | "ar_condicionado" | "bomba" | "motor" | "motor_portao" | "aquecedor" | "geladeira" | "freezer" | "lava_loucas"
+  | "caixa_4x2" | "caixa_4x4" | "caixa_passagem" | "caixa_teto" | "condulete";
 
 export type ComponentDef = {
   kind: ComponentKind; label: string; short: string; layer: LayerId;
-  group: "Iluminação" | "Comandos" | "Tomadas" | "Equipamentos";
+  group: "Iluminação" | "Comandos" | "Tomadas" | "Equipamentos" | "Caixas";
   power: number; voltage: 127 | 220; height: number;
 };
 
@@ -66,6 +67,11 @@ export const CATALOG: ComponentDef[] = [
   { kind: "geladeira", label: "Geladeira", short: "GE", layer: "equipamentos", group: "Equipamentos", power: 500, voltage: 127, height: 0.3 },
   { kind: "freezer", label: "Freezer", short: "FZ", layer: "equipamentos", group: "Equipamentos", power: 500, voltage: 127, height: 0.3 },
   { kind: "lava_loucas", label: "Lava-louças", short: "LL", layer: "equipamentos", group: "Equipamentos", power: 1800, voltage: 127, height: 0.6 },
+  { kind: "caixa_4x2", label: "Caixa 4x2", short: "CX42", layer: "eletrodutos", group: "Caixas", power: 0, voltage: 127, height: 1.2 },
+  { kind: "caixa_4x4", label: "Caixa 4x4", short: "CX44", layer: "eletrodutos", group: "Caixas", power: 0, voltage: 127, height: 1.2 },
+  { kind: "caixa_passagem", label: "Caixa de passagem", short: "CXP", layer: "eletrodutos", group: "Caixas", power: 0, voltage: 127, height: 2.2 },
+  { kind: "caixa_teto", label: "Caixa de teto", short: "CXT", layer: "eletrodutos", group: "Caixas", power: 0, voltage: 127, height: 2.8 },
+  { kind: "condulete", label: "Condulete", short: "CDL", layer: "eletrodutos", group: "Caixas", power: 0, voltage: 127, height: 1.5 },
 ];
 
 export const CATALOG_BY_KIND: Record<ComponentKind, ComponentDef> = Object.fromEntries(CATALOG.map((c) => [c.kind, c])) as Record<ComponentKind, ComponentDef>;
