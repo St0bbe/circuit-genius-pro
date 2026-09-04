@@ -145,3 +145,11 @@
     linear-gradient(90deg, var(--color-grid) 1px, transparent 1px);
   background-size: 24px 24px;
 }
+
+/* Mantém todas as opções do pop-up de edição acessíveis, inclusive rotação de tomadas. */
+.blueprint-surface foreignObject > div {
+  max-height: min(610px, calc(100dvh - 7rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
