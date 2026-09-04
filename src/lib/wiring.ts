@@ -2,7 +2,7 @@ import type { PlanDocument } from "@/lib/electrical";
 import { analyzeProject } from "@/lib/engineering";
 import { preliminarySizing } from "@/lib/engineering-rules";
 
-export type WireRole = "F" | "N" | "PE" | "R" | "V1" | "V2";
+export type WireRole = "F" | "F2" | "F3" | "N" | "PE" | "R" | "V1" | "V2";
 export type WireEstimate = { circuitId: string; role: WireRole; section: number; length: number; purchaseLength: number; marker: string };
 
 export function estimateWiring(doc: PlanDocument, margin = 0.1): WireEstimate[] {
@@ -12,19 +12,21 @@ export function estimateWiring(doc: PlanDocument, margin = 0.1): WireEstimate[] 
   for (const circuit of overview.circuits) {
     const sizing = preliminarySizing(circuit);
     if (!sizing.conductorSection || circuit.loads.length === 0) continue;
-    const route = circuitRouteLength(doc, circuit.id, circuit.panelId);
+    const routeMeasured = circuitRouteLength(doc, circuit.id, circuit.panelId);
+    const route = circuit.routeLengthOverrideM && circuit.routeLengthOverrideM > 0 ? circuit.routeLengthOverrideM : routeMeasured;
     if (route <= 0) continue;
 
-    const roles: WireRole[] = circuit.voltage === 220 ? ["F", "N", "PE"] : ["F", "N", "PE"];
-    for (const role of roles) {
-      result.push({
-        circuitId: circuit.id,
-        role,
-        section: sizing.conductorSection,
-        length: round2(route),
-        purchaseLength: round2(route * (1 + margin)),
-        marker: `${circuit.id}-${role}`,
-      });
+    let roles: WireRole[] = ["F", "N", "PE"];
+    if (circuit.phase === "AB" || circuit.phase === "BC" || circuit.phase === "CA") roles = ["F", "F2", "PE"];
+    if (circuit.phase === "auto" && circuit.voltage === 220) roles = ["F", "F2", "PE"];
+
+    const commands = doc.points.filter((p) => p.circuit.trim().toUpperCase() === circuit.id && ["interruptor_simples", "interruptor_paralelo", "interruptor_intermediario"].includes(p.kind));
+    const hasLight = doc.points.some((p) => p.circuit.trim().toUpperCase() === circuit.id && ["ponto_luz", "luminaria", "spot", "arandela", "perfil_led"].includes(p.kind));
+    if (hasLight && commands.length) roles.push("R");
+    if (commands.filter((p) => p.kind === "interruptor_paralelo" || p.kind === "interruptor_intermediario").length >= 2) roles.push("V1", "V2");
+
+    for (const role of [...new Set(roles)]) {
+      result.push({ circuitId: circuit.id, role, section: sizing.conductorSection, length: round2(route), purchaseLength: round2(route * (1 + margin)), marker: `${circuit.id}-${role}` });
     }
   }
   return result;
