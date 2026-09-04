@@ -22,7 +22,7 @@ import {
 import { getWireRuns } from "@/lib/auto-routing";
 import { SymbolGlyph, kindColor } from "./SymbolGlyph";
 
-export type Tool = "navigate" | "select" | "room" | "room_free" | "wall" | "door" | "window" | "point" | "panel" | "conduit";
+export type Tool = "navigate" | "select" | "room" | "room_free" | "wall" | "door" | "passage" | "window" | "point" | "panel" | "conduit";
 export type Selection = { type: "room" | "architecture" | "point" | "panel" | "conduit"; id: string } | null;
 
 type Props = {
@@ -36,7 +36,12 @@ type Props = {
   onToolDone: () => void;
 };
 
-type SegmentDraft = { kind: ArchitecturalKind; x0: number; y0: number; x1: number; y1: number };
+type SegmentKind = ArchitecturalKind | "passage";
+type SegmentDraft = { kind: SegmentKind; x0: number; y0: number; x1: number; y1: number };
+type DoorElement = PlanDocument["architecture"][number] & {
+  openingAngle?: number;
+  openingSide?: "up" | "down";
+};
 type DragState =
   | { kind: "pan"; ox: number; oy: number }
   | { kind: "move"; id: string; type: string; ox: number; oy: number }
@@ -59,7 +64,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   }, [view]);
 
   useEffect(() => { if (tool !== "conduit") setConduitFrom(null); }, [tool]);
-  useEffect(() => { if (!["wall", "door", "window"].includes(tool)) setSegment(null); }, [tool]);
+  useEffect(() => { if (!["wall", "door", "passage", "window"].includes(tool)) setSegment(null); }, [tool]);
   useEffect(() => { if (tool !== "room_free") setRoomPolygon([]); }, [tool]);
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -72,9 +77,10 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     setView({ z: nz, x: mx - ((mx - view.x) * nz) / view.z, y: my - ((my - view.y) * nz) / view.z });
   };
 
-  const architectureKindForTool = (): ArchitecturalKind | null => {
+  const architectureKindForTool = (): SegmentKind | null => {
     if (tool === "wall") return "wall";
     if (tool === "door") return "door";
+    if (tool === "passage") return "passage";
     if (tool === "window") return "window";
     return null;
   };
@@ -189,7 +195,18 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
       const draft = segment; setSegment(null);
       if (Math.hypot(draft.x1 - draft.x0, draft.y1 - draft.y0) >= 0.25) {
         const id = uid();
-        onChange((d) => ({ ...d, architecture: [...d.architecture, { id, kind: draft.kind, x1: draft.x0, y1: draft.y0, x2: draft.x1, y2: draft.y1, thickness: draft.kind === "wall" ? 0.15 : undefined, openingDirection: draft.kind === "door" ? "left" : undefined, ...(draft.kind === "door" ? { openingAngle: 90 } : {}) }] } as PlanDocument));
+        const element = {
+          id,
+          kind: draft.kind,
+          x1: draft.x0,
+          y1: draft.y0,
+          x2: draft.x1,
+          y2: draft.y1,
+          thickness: draft.kind === "wall" ? 0.15 : undefined,
+          openingDirection: draft.kind === "door" ? "left" : undefined,
+          ...(draft.kind === "door" ? { openingAngle: 90, openingSide: "down" as const } : {}),
+        } as PlanDocument["architecture"][number];
+        onChange((d) => ({ ...d, architecture: [...d.architecture, element] }));
         onSelect({ type: "architecture", id });
         if (draft.kind !== "wall") onToolDone();
       }
@@ -233,7 +250,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   };
 
   const isSel = (type: string, id: string) => selection?.type === type && selection.id === id;
-  const cursor = tool === "navigate" ? "grab" : tool === "select" ? "default" : ["room", "room_free", "wall", "door", "window"].includes(tool) ? "crosshair" : tool === "conduit" ? "cell" : "copy";
+  const cursor = tool === "navigate" ? "grab" : tool === "select" ? "default" : ["room", "room_free", "wall", "door", "passage", "window"].includes(tool) ? "crosshair" : tool === "conduit" ? "cell" : "copy";
   const wireRuns = getWireRuns(doc);
 
   return (
@@ -262,27 +279,45 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
         })}
 
         {visible.arquitetura && doc.architecture.map((a) => {
+          const architecturalKind = String(a.kind);
           const x1 = a.x1 * PX_PER_M, y1 = a.y1 * PX_PER_M, x2 = a.x2 * PX_PER_M, y2 = a.y2 * PX_PER_M;
           const selected = isSel("architecture", a.id), dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
           const nx = -dy / len, ny = dx / len;
-          const door = a.kind === "door" ? a as typeof a & { openingAngle?: number } : null;
+          const door = architecturalKind === "door" ? a as DoorElement : null;
           const openingAngle = Math.min(180, Math.max(15, door?.openingAngle ?? 90));
-          const directionSign = door?.openingDirection === "right" ? -1 : 1;
-          const radians = directionSign * openingAngle * Math.PI / 180;
-          const openX = x1 + dx * Math.cos(radians) - dy * Math.sin(radians);
-          const openY = y1 + dx * Math.sin(radians) + dy * Math.cos(radians);
-          const largeArc = openingAngle > 180 ? 1 : 0;
-          const sweep = directionSign > 0 ? 1 : 0;
+
+          let hingeX = x1, hingeY = y1, freeX = x2, freeY = y2;
+          if (door?.openingDirection === "right") {
+            hingeX = x2; hingeY = y2; freeX = x1; freeY = y1;
+          }
+          const closedDx = freeX - hingeX, closedDy = freeY - hingeY;
+          const angleRad = openingAngle * Math.PI / 180;
+          const positiveX = hingeX + closedDx * Math.cos(angleRad) - closedDy * Math.sin(angleRad);
+          const positiveY = hingeY + closedDx * Math.sin(angleRad) + closedDy * Math.cos(angleRad);
+          const negativeX = hingeX + closedDx * Math.cos(-angleRad) - closedDy * Math.sin(-angleRad);
+          const negativeY = hingeY + closedDx * Math.sin(-angleRad) + closedDy * Math.cos(-angleRad);
+          const wantsUp = (door?.openingSide ?? "down") === "up";
+          const usePositive = wantsUp ? positiveY <= negativeY : positiveY >= negativeY;
+          const openX = usePositive ? positiveX : negativeX;
+          const openY = usePositive ? positiveY : negativeY;
+          const sweep = usePositive ? 1 : 0;
+
           return <g key={a.id} onMouseDown={(e) => startMove(e, "architecture", a.id, a.x1, a.y1)}>
-            {a.kind === "wall" && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={Math.max(4, (a.thickness ?? 0.15) * PX_PER_M)} strokeLinecap="square" />}
-            {a.kind === "window" && <><line x1={x1 + nx * 3} y1={y1 + ny * 3} x2={x2 + nx * 3} y2={y2 + ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /><line x1={x1 - nx * 3} y1={y1 - ny * 3} x2={x2 - nx * 3} y2={y2 - ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /></>}
-            {door && <>
-              <line x1={x1} y1={y1} x2={openX} y2={openY} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} />
-              <path d={`M ${x2} ${y2} A ${len} ${len} 0 ${largeArc} ${sweep} ${openX} ${openY}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" />
-              <circle cx={x1} cy={y1} r={2.5} fill={selected ? "var(--primary)" : "var(--foreground)"} />
-              {selected && <text x={(x1 + openX) / 2} y={(y1 + openY) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={9} fontFamily="var(--font-mono)">{openingAngle}° · {door.openingDirection === "right" ? "direita" : "esquerda"}</text>}
+            {architecturalKind === "wall" && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={Math.max(4, (a.thickness ?? 0.15) * PX_PER_M)} strokeLinecap="square" />}
+            {architecturalKind === "window" && <><line x1={x1 + nx * 3} y1={y1 + ny * 3} x2={x2 + nx * 3} y2={y2 + ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /><line x1={x1 - nx * 3} y1={y1 - ny * 3} x2={x2 - nx * 3} y2={y2 - ny * 3} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2} /></>}
+            {architecturalKind === "passage" && <>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--surface)" strokeWidth={10} strokeLinecap="butt" />
+              <line x1={x1 - nx * 5} y1={y1 - ny * 5} x2={x1 + nx * 5} y2={y1 + ny * 5} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={1.8} />
+              <line x1={x2 - nx * 5} y1={y2 - ny * 5} x2={x2 + nx * 5} y2={y2 + ny * 5} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={1.8} />
+              {selected && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={9} fontFamily="var(--font-mono)">passagem · {fmtM(architectureLength(a))}</text>}
             </>}
-            {selected && a.kind !== "door" && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
+            {door && <>
+              <line x1={hingeX} y1={hingeY} x2={openX} y2={openY} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} />
+              <path d={`M ${freeX} ${freeY} A ${len} ${len} 0 0 ${sweep} ${openX} ${openY}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" />
+              <circle cx={hingeX} cy={hingeY} r={2.5} fill={selected ? "var(--primary)" : "var(--foreground)"} />
+              {selected && <text x={(hingeX + openX) / 2} y={(hingeY + openY) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={9} fontFamily="var(--font-mono)">{openingAngle}° · {door.openingDirection === "right" ? "direita" : "esquerda"} · {(door.openingSide ?? "down") === "up" ? "cima" : "baixo"}</text>}
+            </>}
+            {selected && architecturalKind !== "door" && architecturalKind !== "passage" && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
           </g>;
         })}
 
