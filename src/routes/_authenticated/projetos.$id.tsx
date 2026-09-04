@@ -40,7 +40,8 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "passage", label: "Passagem", hint: "Arraste sobre a parede para criar um vão sem folha de porta" },
   { id: "window", label: "Janela", hint: "Arraste sobre a parede para inserir uma janela" },
   { id: "point", label: "+ Adicionar ponto", hint: "Escolha primeiro o componente na biblioteca e depois clique na planta" },
-  { id: "panel", label: "Quadro", hint: "Clique para posicionar o quadro" },
+  { id: "panel_supply", label: "+ QA", hint: "Clique para posicionar o Quadro de Alimentação" },
+  { id: "panel_distribution", label: "+ QD", hint: "Clique para posicionar o Quadro de Distribuição" },
   { id: "conduit", label: "Eletroduto", hint: "Clique em dois pontos/quadros; curvas são criadas e podem ser ajustadas" },
 ];
 
