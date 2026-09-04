@@ -44,6 +44,12 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "conduit", label: "Eletroduto", hint: "Clique em dois pontos/quadros; curvas são criadas e podem ser ajustadas" },
 ];
 
+const ARCHITECTURE_TOOL_IDS: Tool[] = ["wall", "room", "room_free", "passage", "window", "door"];
+const ARCHITECTURE_TOOLS = ARCHITECTURE_TOOL_IDS.map((id) => TOOLS.find((tool) => tool.id === id)!).filter(Boolean);
+const PRIMARY_TOOLS = TOOLS.filter((tool) => tool.id === "navigate" || tool.id === "select");
+const ELECTRICAL_TOOLS = TOOLS.filter((tool) => !ARCHITECTURE_TOOL_IDS.includes(tool.id) && tool.id !== "navigate" && tool.id !== "select");
+const ARCHITECTURE_ICON: Record<string, string> = { wall: "└", room: "▧", room_free: "⬚", passage: "┄", window: "▭", door: "◱" };
+
 const ALL_VISIBLE = Object.fromEntries(LAYERS.map((l) => [l.id, true])) as Record<LayerId, boolean>;
 type MobilePanel = "library" | "properties" | "summary" | null;
 type HistoryState = { past: PlanDocument[]; future: PlanDocument[] };
@@ -59,6 +65,7 @@ function EditorPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
+  const [architectureMenuOpen, setArchitectureMenuOpen] = useState(false);
   const [, setHistoryVersion] = useState(0);
   const loaded = useRef(false);
   const clipboard = useRef<{ type: NonNullable<Selection>["type"]; data: unknown } | null>(null);
@@ -194,6 +201,7 @@ function EditorPage() {
   const openPointLibrary = useCallback(() => {
     setTool("navigate");
     setSelection(null);
+    setArchitectureMenuOpen(false);
     setMobilePanel("library");
   }, []);
 
@@ -231,7 +239,7 @@ function EditorPage() {
         update((d) => ({ ...d, points: d.points.map((p) => p.id === selection.id ? { ...p, mirrored: !p.mirrored } : p) }));
         return;
       }
-      if (e.key === "Escape") setTool("navigate");
+      if (e.key === "Escape") { setTool("navigate"); setArchitectureMenuOpen(false); }
       if (e.key.toLowerCase() === "n") setTool("navigate");
       if (e.key.toLowerCase() === "v") setTool("select");
       if (e.key.toLowerCase() === "a") setTool("room");
@@ -249,6 +257,7 @@ function EditorPage() {
 
   const summary = useMemo(() => summarize(doc), [doc]);
   const activeTool = TOOLS.find((t) => t.id === tool);
+  const architectureToolActive = ARCHITECTURE_TOOL_IDS.includes(tool);
   const canUndo = history.current.past.length > 0;
   const canRedo = history.current.future.length > 0;
 
@@ -256,6 +265,7 @@ function EditorPage() {
   const pickComponent = (kind: ComponentKind) => {
     setActiveKind(kind);
     setTool("point");
+    setArchitectureMenuOpen(false);
     closeMobilePanels();
   };
 
@@ -265,6 +275,7 @@ function EditorPage() {
       return;
     }
     setTool(toolId);
+    setArchitectureMenuOpen(false);
     closeMobilePanels();
   };
 
@@ -286,7 +297,7 @@ function EditorPage() {
 
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background">
-      <header className="z-50 shrink-0 border-b border-border bg-sidebar">
+      <header className="relative z-50 shrink-0 border-b border-border bg-sidebar">
         <div className="flex min-h-12 items-center justify-between gap-2 px-2 py-2 sm:px-3">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Link to="/projetos" className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground sm:text-sm">← <span className="hidden sm:inline">Projetos</span></Link>
@@ -309,11 +320,35 @@ function EditorPage() {
         </div>
 
         <div className="scrollbar-none flex items-center gap-1 overflow-x-auto border-t border-border/60 px-2 py-1.5 sm:px-3 xl:justify-center">
-          {TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}>{t.label}</Button>)}
+          {PRIMARY_TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}>{t.label}</Button>)}
+          <Button className="shrink-0" size="sm" variant={architectureToolActive || architectureMenuOpen ? "default" : "ghost"} onClick={() => setArchitectureMenuOpen((open) => !open)} aria-expanded={architectureMenuOpen} aria-haspopup="menu">
+            <span className="mr-1">▣</span> Elementos <span className={cn("ml-1 transition-transform", architectureMenuOpen && "rotate-180")}>⌄</span>
+          </Button>
+          {ELECTRICAL_TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}>{t.label}</Button>)}
           <span className="mx-1 h-5 w-px shrink-0 bg-border" />
           <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoConduits}>Auto eletrodutos</Button>
           <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoWiring}>Auto fiação</Button>
         </div>
+
+        {architectureMenuOpen && <>
+          <button type="button" aria-label="Fechar menu de elementos" className="fixed inset-0 z-[55] cursor-default bg-transparent" onClick={() => setArchitectureMenuOpen(false)} />
+          <div role="menu" className="absolute left-2 top-full z-[60] mt-1 w-[min(92vw,390px)] overflow-hidden rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl sm:left-28">
+            <div className="px-2.5 pb-2 pt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Elementos da planta</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Escolha o que deseja desenhar ou inserir.</p>
+            </div>
+            <div className="grid gap-1">
+              {ARCHITECTURE_TOOLS.map((item) => <button key={item.id} type="button" role="menuitem" className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground", tool === item.id && "bg-accent text-accent-foreground")} onClick={() => activateTool(item.id)}>
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border bg-background font-mono text-lg text-primary">{ARCHITECTURE_ICON[item.id]}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{item.label}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">{item.hint}</span>
+                </span>
+                {tool === item.id && <span className="text-primary">✓</span>}
+              </button>)}
+            </div>
+          </div>
+        </>}
       </header>
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
