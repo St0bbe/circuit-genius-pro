@@ -2,7 +2,7 @@ import { CATALOG, LAYERS, type ComponentKind, type LayerId } from "@/lib/electri
 import { SymbolPreview } from "./SymbolGlyph";
 import { cn } from "@/lib/utils";
 
-const GROUPS = ["Iluminação", "Comandos", "Tomadas", "Equipamentos"] as const;
+const GROUPS = ["Iluminação", "Comandos", "Tomadas", "Equipamentos", "Caixas"] as const;
 
 type Props = {
   activeKind: ComponentKind;
@@ -18,19 +18,8 @@ export function LibraryPanel({ activeKind, onPick, visible, onToggleLayer }: Pro
         <p className="tech-label mb-2">Camadas</p>
         <div className="space-y-1">
           {LAYERS.map((l) => (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => onToggleLayer(l.id)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
-                !visible[l.id] && "opacity-40",
-              )}
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                style={{ backgroundColor: l.colorVar }}
-              />
+            <button key={l.id} type="button" onClick={() => onToggleLayer(l.id)} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent", !visible[l.id] && "opacity-40")}>
+              <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: l.colorVar }} />
               <span className="flex-1">{l.label}</span>
               <span className="tech-label">{visible[l.id] ? "on" : "off"}</span>
             </button>
@@ -45,15 +34,7 @@ export function LibraryPanel({ activeKind, onPick, visible, onToggleLayer }: Pro
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">{g}</p>
             <div className="space-y-1">
               {CATALOG.filter((c) => c.group === g).map((c) => (
-                <button
-                  key={c.kind}
-                  type="button"
-                  onClick={() => onPick(c.kind)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent",
-                    activeKind === c.kind && "border-primary bg-sidebar-accent",
-                  )}
-                >
+                <button key={c.kind} type="button" onClick={() => onPick(c.kind)} className={cn("flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent", activeKind === c.kind && "border-primary bg-sidebar-accent")}>
                   <SymbolPreview kind={c.kind} />
                   <span className="flex-1 text-sm leading-tight">{c.label}</span>
                   <span className="tech-label">{c.power ? `${c.power}W` : "—"}</span>
