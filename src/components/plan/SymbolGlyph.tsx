@@ -85,6 +85,7 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
     case "tug_tripla": body = outletTriangle(3); break;
     case "tug_usb": body = outletTriangle(1, false, "U"); break;
     case "tue": body = outletTriangle(1, false, "E"); break;
+    case "tue_dupla": body = outletTriangle(2, false, "E"); break;
     case "tomada_equipamento": body = outletTriangle(1, false, "EQ"); break;
     case "tomada_piso": body = outletTriangle(1, true); break;
     case "tomada_externa": body = outletTriangle(1, false, "EXT"); break;
