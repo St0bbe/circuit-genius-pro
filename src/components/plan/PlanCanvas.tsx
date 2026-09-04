@@ -128,7 +128,14 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     }
     if (tool === "panel") {
       const id = uid();
-      onChange((d) => ({ ...d, panels: [...d.panels, { id, name: `QD-${String(d.panels.length + 1).padStart(2, "0")}`, x: snap(w.x), y: snap(w.y), rotation: 0 }] }));
+      onChange((d) => {
+        const hasSupply = d.panels.some((p) => (p.kind ?? "distribution") === "supply");
+        const kind = hasSupply ? "distribution" as const : "supply" as const;
+        const count = d.panels.filter((p) => (p.kind ?? "distribution") === kind).length + 1;
+        const prefix = kind === "supply" ? "QA" : "QD";
+        const supply = kind === "distribution" ? d.panels.find((p) => (p.kind ?? "distribution") === "supply") : undefined;
+        return { ...d, panels: [...d.panels, { id, name: `${prefix}-${String(count).padStart(2, "0")}`, x: snap(w.x), y: snap(w.y), rotation: 0, kind, upstreamPanelId: supply?.id ?? null }] };
+      });
       onSelect({ type: "panel", id });
       onToolDone();
     }
@@ -297,8 +304,6 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           const negativeX = hingeX + closedDx * Math.cos(-angleRad) - closedDy * Math.sin(-angleRad);
           const negativeY = hingeY + closedDx * Math.sin(-angleRad) + closedDy * Math.cos(-angleRad);
 
-          // Classifica cada posição pelo lado do próprio segmento da porta.
-          // Isso funciona para portas horizontais, verticais e inclinadas, independentemente da dobradiça.
           const positiveSide = dx * (positiveY - hingeY) - dy * (positiveX - hingeX);
           const negativeSide = dx * (negativeY - hingeY) - dy * (negativeX - hingeX);
           const wantsOutside = (door?.openingSide ?? "down") === "up";
@@ -347,10 +352,24 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           </g>;
         }))}
 
-        {visible.quadro && doc.panels.map((p) => <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${p.x * PX_PER_M} ${p.y * PX_PER_M})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "navigate" ? "grab" : tool === "conduit" ? "cell" : "move" }}>
-          <rect x={p.x * PX_PER_M - 20} y={p.y * PX_PER_M - 14} width={40} height={28} rx={3} fill="var(--surface)" stroke={isSel("panel", p.id) || conduitFrom === p.id ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2} />
-          <text x={p.x * PX_PER_M} y={p.y * PX_PER_M + 4} textAnchor="middle" fill="var(--layer-panel)" fontSize={11} fontFamily="var(--font-mono)">{p.name}</text>
-        </g>)}
+        {visible.quadro && doc.panels.map((p) => {
+          const isSupply = (p.kind ?? "distribution") === "supply";
+          const selected = isSel("panel", p.id) || conduitFrom === p.id;
+          const cx = p.x * PX_PER_M, cy = p.y * PX_PER_M;
+          return <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${cx} ${cy})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} style={{ cursor: tool === "navigate" ? "grab" : tool === "conduit" ? "cell" : "move" }}>
+            <rect x={cx - 22} y={cy - 17} width={44} height={34} rx={3} fill="var(--surface)" stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2.2} />
+            {isSupply ? <>
+              <rect x={cx - 18} y={cy - 13} width={36} height={26} rx={2} fill="none" stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={1} />
+              <path d={`M ${cx - 3} ${cy - 10} L ${cx + 3} ${cy - 2} L ${cx} ${cy - 2} L ${cx + 4} ${cy + 9} L ${cx - 5} ${cy + 1} L ${cx - 1} ${cy + 1} Z`} fill={selected ? "var(--primary)" : "var(--layer-panel)"} />
+            </> : <>
+              <line x1={cx - 15} y1={cy - 8} x2={cx + 15} y2={cy - 8} stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={1.2} />
+              <line x1={cx - 15} y1={cy} x2={cx + 15} y2={cy} stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={1.2} />
+              <line x1={cx - 15} y1={cy + 8} x2={cx + 15} y2={cy + 8} stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={1.2} />
+            </>}
+            <text x={cx} y={cy + 4} textAnchor="middle" fill={selected ? "var(--primary)" : "var(--layer-panel)"} fontSize={10} fontWeight="700" fontFamily="var(--font-mono)">{isSupply ? "QA" : "QD"}</text>
+            <text x={cx} y={cy + 29} textAnchor="middle" fill="var(--layer-panel)" fontSize={9.5} fontFamily="var(--font-mono)">{p.name}</text>
+          </g>;
+        })}
 
         {doc.points.map((p) => {
           const def = CATALOG_BY_KIND[p.kind]; if (!def || !visible[def.layer]) return null;
