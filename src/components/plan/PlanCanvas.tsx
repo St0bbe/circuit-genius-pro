@@ -231,7 +231,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
       {segment && <line x1={segment.x0 * PX_PER_M} y1={segment.y0 * PX_PER_M} x2={segment.x1 * PX_PER_M} y2={segment.y1 * PX_PER_M} stroke="var(--primary)" strokeWidth={segment.kind === "wall" ? 7 : 3} strokeDasharray={segment.kind === "wall" ? undefined : "6 4"} />}
     </g>
 
-    {editingPoint && <foreignObject x="18" y="48" width="390" height="520">
+    {editingPoint && <foreignObject x="18" y="48" width="390" height="610">
       <div xmlns="http://www.w3.org/1999/xhtml" className="rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div><p className="text-sm font-semibold">Editar ponto</p><p className="text-xs text-muted-foreground">Duplo clique abre esta edição rápida</p></div>
@@ -246,11 +246,20 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
             <label className="grid gap-1">Altura (m)<input className="h-9 rounded-md border border-input bg-background px-2 text-sm" type="number" min="0" step="0.05" value={editingPoint.height} onChange={(e) => patchEditingPoint({ height: Math.max(0, Number(e.target.value) || 0) })} /></label>
             <label className="grid gap-1">Circuito<input className="h-9 rounded-md border border-input bg-background px-2 text-sm" placeholder="C01" value={editingPoint.circuit} onChange={(e) => patchEditingPoint({ circuit: e.target.value.toUpperCase() })} /></label>
           </div>
-          {CATALOG_BY_KIND[editingPoint.kind]?.layer === "tomadas" && <div className="grid grid-cols-3 gap-1.5 pt-1">
-            <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height < 0.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 0.3 })}>Baixa</button>
-            <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height >= 0.8 && editingPoint.height < 1.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 1.3 })}>Média</button>
-            <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height >= 1.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 2 })}>Alta</button>
-          </div>}
+          {CATALOG_BY_KIND[editingPoint.kind]?.layer === "tomadas" && <>
+            <div className="grid grid-cols-3 gap-1.5 pt-1">
+              <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height < 0.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 0.3 })}>Baixa</button>
+              <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height >= 0.8 && editingPoint.height < 1.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 1.3 })}>Média</button>
+              <button type="button" className={`rounded-md border px-2 py-2 ${editingPoint.height >= 1.8 ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ height: 2 })}>Alta</button>
+            </div>
+            <div className="grid gap-1 pt-1">
+              <span className="text-muted-foreground">Orientação na parede</span>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[0, 90, 180, 270].map((angle) => <button key={angle} type="button" className={`rounded-md border px-2 py-2 ${((editingPoint.rotation ?? 0) % 360 + 360) % 360 === angle ? "border-primary bg-primary text-primary-foreground" : "border-border bg-secondary"}`} onClick={() => patchEditingPoint({ rotation: angle })}>{angle === 0 ? "Direita" : angle === 90 ? "Baixo" : angle === 180 ? "Esquerda" : "Cima"}</button>)}
+              </div>
+              <button type="button" className="mt-1 rounded-md border border-border bg-secondary px-3 py-2 font-medium hover:bg-accent" onClick={() => patchEditingPoint({ rotation: (((editingPoint.rotation ?? 0) + 90) % 360) })}>Girar 90°</button>
+            </div>
+          </>}
           <label className="grid gap-1">Observações<textarea className="min-h-16 rounded-md border border-input bg-background p-2 text-sm" value={editingPoint.notes ?? ""} onChange={(e) => patchEditingPoint({ notes: e.target.value })} /></label>
           <div className="flex justify-end pt-1"><button type="button" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => setEditingPointId(null)}>Concluir</button></div>
         </div>
