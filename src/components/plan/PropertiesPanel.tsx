@@ -1,7 +1,19 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { CATALOG_BY_KIND, architectureLength, conduitLength, fmtM, nodePosition, type PlanDocument, type PlanSummary } from "@/lib/electrical";
+import {
+  CATALOG_BY_KIND,
+  architectureLength,
+  conduitLength,
+  conduitPath,
+  fmtM,
+  nodePosition,
+  roomArea,
+  roomPerimeter,
+  type ConduitType,
+  type PlanDocument,
+  type PlanSummary,
+} from "@/lib/electrical";
 import type { Selection } from "./PlanCanvas";
 
 type Props = { doc: PlanDocument; selection: Selection; summary: PlanSummary; onChange: (updater: (doc: PlanDocument) => PlanDocument) => void; onSelect: (sel: Selection) => void };
@@ -28,6 +40,15 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
   const panel = selection?.type === "panel" ? doc.panels.find((p) => p.id === selection.id) : undefined;
   const conduit = selection?.type === "conduit" ? doc.conduits.find((c) => c.id === selection.id) : undefined;
 
+  const addConduitBend = () => {
+    if (!conduit) return;
+    const path = conduitPath(doc, conduit);
+    if (path.length < 2) return;
+    const a = path[path.length - 2], b = path[path.length - 1];
+    const bend = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, route: [...(c.route ?? []), bend] } : c) }));
+  };
+
   return <div className="flex h-full flex-col overflow-y-auto border-l border-border bg-sidebar p-3">
     <p className="tech-label mb-3">Propriedades</p>
     {!selection && <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">Selecione um ambiente, elemento arquitetônico, ponto, quadro ou eletroduto para editar.</div>}
@@ -47,10 +68,14 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
 
     {room && <div className="space-y-3">
       <Field label="Nome do ambiente"><Input value={room.name} onChange={(e) => onChange((d) => ({ ...d, rooms: d.rooms.map((r) => r.id === room.id ? { ...r, name: e.target.value } : r) }))} /></Field>
-      <div className="grid grid-cols-2 gap-2">
+      {!room.points && <div className="grid grid-cols-2 gap-2">
         <Field label="Largura (m)"><Input type="number" step="0.25" value={room.w} onChange={(e) => onChange((d) => ({ ...d, rooms: d.rooms.map((r) => r.id === room.id ? { ...r, w: Math.max(0.5, Number(e.target.value) || 0) } : r) }))} /></Field>
         <Field label="Comprimento (m)"><Input type="number" step="0.25" value={room.h} onChange={(e) => onChange((d) => ({ ...d, rooms: d.rooms.map((r) => r.id === room.id ? { ...r, h: Math.max(0.5, Number(e.target.value) || 0) } : r) }))} /></Field>
-      </div><Row k="Área" v={`${(room.w * room.h).toFixed(2)} m²`} /><Row k="Perímetro" v={fmtM(2 * (room.w + room.h))} />
+      </div>}
+      <Row k="Forma" v={room.points ? `Livre (${room.points.length} vértices)` : "Retangular"} />
+      <Row k="Área" v={`${roomArea(room).toFixed(2)} m²`} />
+      <Row k="Perímetro" v={fmtM(roomPerimeter(room))} />
+      {room.points && <p className="text-xs text-muted-foreground">Ambientes livres permitem representar cozinha em L, corredor integrado, recuos e outras geometrias.</p>}
     </div>}
 
     {architecture && <div className="space-y-3">
@@ -63,7 +88,22 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
 
     {panel && <div className="space-y-3"><Field label="Nome do quadro"><Input value={panel.name} onChange={(e) => onChange((d) => ({ ...d, panels: d.panels.map((p) => p.id === panel.id ? { ...p, name: e.target.value } : p) }))} /></Field><Row k="Eletrodutos ligados" v={String(doc.conduits.filter((c) => c.from === panel.id || c.to === panel.id).length)} /></div>}
 
-    {conduit && <div className="space-y-3"><Field label="Diâmetro (mm)"><Input type="number" value={conduit.diameter} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, diameter: Number(e.target.value) || 0 } : c) }))} /></Field><Row k="Comprimento" v={fmtM(conduitLength(doc, conduit))} /><Row k="Origem" v={nodeLabel(doc, conduit.from)} /><Row k="Destino" v={nodeLabel(doc, conduit.to)} /></div>}
+    {conduit && <div className="space-y-3">
+      <Field label="Tipo de eletroduto">
+        <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={conduit.type ?? "normal"} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, type: e.target.value as ConduitType } : c) }))}>
+          <option value="normal">Normal / parede — linha contínua</option>
+          <option value="ceiling">Teto — linha contínua</option>
+          <option value="underground">Subterrâneo — pontilhado</option>
+        </select>
+      </Field>
+      <Field label="Diâmetro (mm)"><Input type="number" value={conduit.diameter} onChange={(e) => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, diameter: Number(e.target.value) || 0 } : c) }))} /></Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Button size="sm" variant="secondary" onClick={addConduitBend}>Adicionar curva</Button>
+        <Button size="sm" variant="secondary" disabled={!conduit.route?.length} onClick={() => onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === conduit.id ? { ...c, route: (c.route ?? []).slice(0, -1) } : c) }))}>Remover curva</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Selecione o eletroduto no desenho e arraste os pontos circulares para posicionar as curvas entre paredes.</p>
+      <Row k="Comprimento" v={fmtM(conduitLength(doc, conduit))} /><Row k="Curvas" v={String(conduit.route?.length ?? 0)} /><Row k="Origem" v={nodeLabel(doc, conduit.from)} /><Row k="Destino" v={nodeLabel(doc, conduit.to)} />
+    </div>}
 
     {selection && <Button variant="destructive" size="sm" className="mt-4" onClick={remove}>Excluir elemento</Button>}
     <div className="mt-6"><p className="tech-label mb-2">Resumo da planta</p><Row k="Ambientes" v={`${doc.rooms.length} · ${summary.area.toFixed(2)} m²`} /><Row k="Paredes/aberturas" v={String(doc.architecture.length)} /><Row k="Pontos de luz" v={String(summary.lighting)} /><Row k="Tomadas" v={String(summary.outlets)} /><Row k="Equipamentos" v={String(summary.equipment)} /><Row k="Quadros" v={String(doc.panels.length)} /><Row k="Eletroduto total" v={fmtM(summary.conduitLength)} /><Row k="Potência instalada" v={`${summary.installedPower.toLocaleString("pt-BR")} VA`} /></div>
