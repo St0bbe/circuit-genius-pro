@@ -1,0 +1,36 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { PlanDocument } from "@/lib/electrical";
+import { getGrounding, setGrounding, type GroundingSystem } from "@/lib/grounding";
+import { getProfessionalMetadata, setProfessionalMetadata } from "@/lib/project-meta";
+import { createProjectVersion, getProjectVersions, restoreProjectVersion } from "@/lib/versioning";
+import { downloadText, exportBasicDxf, exportMaterialsCsv, exportMemorialTxt } from "@/lib/exporters";
+
+type Props = { doc: PlanDocument; onChange: (updater: (doc: PlanDocument) => PlanDocument) => void };
+type Tab = "projeto" | "aterramento" | "versoes" | "exportar";
+
+export function ProjectToolsPanel({ doc, onChange }: Props) {
+  const [tab, setTab] = useState<Tab>("projeto");
+  const grounding = getGrounding(doc);
+  const meta = getProfessionalMetadata(doc);
+  const versions = getProjectVersions(doc);
+
+  return <div className="border-t border-border bg-sidebar">
+    <div className="flex flex-wrap gap-1 border-b border-border p-2">
+      {(["projeto","aterramento","versoes","exportar"] as Tab[]).map((key) => <Button key={key} size="sm" variant={tab === key ? "default" : "ghost"} onClick={() => setTab(key)}>{key === "projeto" ? "Responsável" : key === "aterramento" ? "Aterramento" : key === "versoes" ? "Versões" : "Exportar"}</Button>)}
+    </div>
+
+    {tab === "projeto" && <div className="space-y-2 p-3"><Title title="Dados profissionais" subtitle="Informações para documentação e responsabilidade técnica" /><Field label="Projetista" value={meta.designer} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { designer: value }))} /><Field label="Empresa" value={meta.company} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { company: value }))} /><div className="grid grid-cols-2 gap-2"><Field label="Conselho" value={meta.professionalCouncil} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { professionalCouncil: value }))} /><Field label="Registro" value={meta.registration} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { registration: value }))} /></div><Field label="Cliente" value={meta.client} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { client: value }))} /><Field label="Endereço da obra" value={meta.siteAddress} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { siteAddress: value }))} /><div className="grid grid-cols-2 gap-2"><Field label="Revisão" value={meta.revision} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { revision: value }))} /><Field label="Data" value={meta.revisionDate} onChange={(value) => onChange((d) => setProfessionalMetadata(d, { revisionDate: value }))} /></div><p className="text-[10px] text-muted-foreground">{meta.responsibilityNote}</p></div>}
+
+    {tab === "aterramento" && <div className="space-y-2 p-3"><Title title="Aterramento" subtitle="Configuração básica do sistema de aterramento" /><label className="block text-xs">Sistema<select className="mt-1 h-9 w-full rounded border border-input bg-background px-2" value={grounding.system} onChange={(e) => onChange((d) => setGrounding(d, { system: e.target.value as GroundingSystem }))}>{["TN-S","TN-C-S","TT","IT","custom"].map((item) => <option key={item}>{item}</option>)}</select></label><div className="grid grid-cols-2 gap-2"><NumberField label="Hastes" value={grounding.electrodeCount} onChange={(value) => onChange((d) => setGrounding(d, { electrodeCount: value }))} /><NumberField label="Caixas inspeção" value={grounding.inspectionBoxCount} onChange={(value) => onChange((d) => setGrounding(d, { inspectionBoxCount: value }))} /></div><div className="grid grid-cols-2 gap-2"><NumberField label="Haste (m)" value={grounding.electrodeLengthM ?? 0} onChange={(value) => onChange((d) => setGrounding(d, { electrodeLengthM: value || null }))} /><NumberField label="Condutor (mm²)" value={grounding.groundingConductorSection ?? 0} onChange={(value) => onChange((d) => setGrounding(d, { groundingConductorSection: value || null }))} /></div><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={grounding.peBusbar} onChange={(e) => onChange((d) => setGrounding(d, { peBusbar: e.target.checked }))} /> Barramento PE</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={grounding.equipotentialBusbar} onChange={(e) => onChange((d) => setGrounding(d, { equipotentialBusbar: e.target.checked }))} /> Barramento equipotencial</label></div>}
+
+    {tab === "versoes" && <div className="space-y-2 p-3"><div className="flex items-center justify-between"><Title title="Histórico e versões" subtitle={`${versions.length} versão(ões) salva(s)`} /><Button size="sm" variant="secondary" onClick={() => onChange((d) => createProjectVersion(d))}>Criar versão</Button></div>{versions.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma versão criada.</p> : versions.slice().reverse().map((version) => <div key={version.id} className="flex items-center justify-between gap-2 rounded border border-border bg-card/45 p-2 text-xs"><div><div className="font-mono text-primary">{version.label}</div><div className="text-[10px] text-muted-foreground">{new Date(version.createdAt).toLocaleString("pt-BR")}</div></div><Button size="sm" variant="ghost" onClick={() => onChange((d) => restoreProjectVersion(d, version.id))}>Restaurar</Button></div>)}</div>}
+
+    {tab === "exportar" && <div className="space-y-2 p-3"><Title title="Exportações" subtitle="Arquivos gerados a partir do estado atual do projeto" /><div className="grid grid-cols-2 gap-2"><Button variant="secondary" onClick={() => downloadText("materiais.csv", exportMaterialsCsv(doc), "text/csv;charset=utf-8")}>Materiais CSV</Button><Button variant="secondary" onClick={() => downloadText("projeto.dxf", exportBasicDxf(doc), "application/dxf")}>DXF básico</Button><Button variant="secondary" onClick={() => downloadText("memorial.txt", exportMemorialTxt(doc))}>Memorial TXT</Button><Button variant="secondary" onClick={() => downloadText("projeto.json", JSON.stringify(doc, null, 2), "application/json")}>Backup JSON</Button></div><p className="text-[10px] text-muted-foreground">PDF executivo e DXF avançado exigem o módulo de pranchas/layout, que continuará sendo evoluído sobre esta base.</p></div>}
+  </div>;
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="block text-xs"><span className="text-[10px] text-muted-foreground">{label}</span><Input className="mt-1" value={value} onChange={(e) => onChange(e.target.value)} /></label>; }
+function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className="block text-xs"><span className="text-[10px] text-muted-foreground">{label}</span><Input className="mt-1" type="number" value={value} onChange={(e) => onChange(Number(e.target.value) || 0)} /></label>; }
+function Title({ title, subtitle }: { title: string; subtitle: string }) { return <div><p className="tech-label">{title}</p><p className="text-[11px] text-muted-foreground">{subtitle}</p></div>; }
