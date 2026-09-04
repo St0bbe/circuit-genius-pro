@@ -296,8 +296,13 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           const positiveY = hingeY + closedDx * Math.sin(angleRad) + closedDy * Math.cos(angleRad);
           const negativeX = hingeX + closedDx * Math.cos(-angleRad) - closedDy * Math.sin(-angleRad);
           const negativeY = hingeY + closedDx * Math.sin(-angleRad) + closedDy * Math.cos(-angleRad);
-          const wantsUp = (door?.openingSide ?? "down") === "up";
-          const usePositive = wantsUp ? positiveY <= negativeY : positiveY >= negativeY;
+
+          // Classifica cada posição pelo lado do próprio segmento da porta.
+          // Isso funciona para portas horizontais, verticais e inclinadas, independentemente da dobradiça.
+          const positiveSide = dx * (positiveY - hingeY) - dy * (positiveX - hingeX);
+          const negativeSide = dx * (negativeY - hingeY) - dy * (negativeX - hingeX);
+          const wantsOutside = (door?.openingSide ?? "down") === "up";
+          const usePositive = wantsOutside ? positiveSide < negativeSide : positiveSide >= negativeSide;
           const openX = usePositive ? positiveX : negativeX;
           const openY = usePositive ? positiveY : negativeY;
           const sweep = usePositive ? 1 : 0;
@@ -315,7 +320,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
               <line x1={hingeX} y1={hingeY} x2={openX} y2={openY} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} />
               <path d={`M ${freeX} ${freeY} A ${len} ${len} 0 0 ${sweep} ${openX} ${openY}`} fill="none" stroke={selected ? "var(--primary)" : "var(--muted-foreground)"} strokeWidth={1.2} strokeDasharray="4 3" />
               <circle cx={hingeX} cy={hingeY} r={2.5} fill={selected ? "var(--primary)" : "var(--foreground)"} />
-              {selected && <text x={(hingeX + openX) / 2} y={(hingeY + openY) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={9} fontFamily="var(--font-mono)">{openingAngle}° · {door.openingDirection === "right" ? "direita" : "esquerda"} · {(door.openingSide ?? "down") === "up" ? "cima" : "baixo"}</text>}
+              {selected && <text x={(hingeX + openX) / 2} y={(hingeY + openY) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={9} fontFamily="var(--font-mono)">{openingAngle}° · {door.openingDirection === "right" ? "direita" : "esquerda"} · {(door.openingSide ?? "down") === "up" ? "fora" : "dentro"}</text>}
             </>}
             {selected && architecturalKind !== "door" && architecturalKind !== "passage" && <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" fill="var(--primary)" fontSize={10} fontFamily="var(--font-mono)">{fmtM(architectureLength(a))}</text>}
           </g>;
