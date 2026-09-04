@@ -76,10 +76,12 @@ export const CATALOG: ComponentDef[] = [
 
 export const CATALOG_BY_KIND: Record<ComponentKind, ComponentDef> = Object.fromEntries(CATALOG.map((c) => [c.kind, c])) as Record<ComponentKind, ComponentDef>;
 
-export type Room = { id: string; name: string; x: number; y: number; w: number; h: number };
+export type PlanVertex = { x: number; y: number };
+export type Room = { id: string; name: string; x: number; y: number; w: number; h: number; points?: PlanVertex[] };
 export type PlanPoint = { id: string; kind: ComponentKind; x: number; y: number; label: string; power: number; voltage: number; height: number; circuit: string; notes?: string; rotation?: number; mirrored?: boolean };
 export type Panel = { id: string; name: string; x: number; y: number; rotation?: number };
-export type Conduit = { id: string; from: string; to: string; diameter: number };
+export type ConduitType = "normal" | "ceiling" | "underground";
+export type Conduit = { id: string; from: string; to: string; diameter: number; type?: ConduitType; route?: PlanVertex[] };
 export type ArchitecturalKind = "wall" | "door" | "window";
 export type ArchitecturalElement = {
   id: string;
@@ -105,7 +107,7 @@ export function normalizeDocument(raw: unknown): PlanDocument {
     rooms: Array.isArray(d.rooms) ? d.rooms : [],
     points: Array.isArray(d.points) ? d.points : [],
     panels: Array.isArray(d.panels) ? d.panels : [],
-    conduits: Array.isArray(d.conduits) ? d.conduits : [],
+    conduits: Array.isArray(d.conduits) ? d.conduits.map((c) => ({ ...c, type: c.type ?? "normal", route: Array.isArray(c.route) ? c.route : [] })) : [],
     architecture: Array.isArray(d.architecture) ? d.architecture : [],
   };
 }
@@ -116,14 +118,56 @@ export const GRID_M = 0.25;
 export const snap = (v: number) => Math.round(v / GRID_M) * GRID_M;
 export const fmtM = (v: number) => `${v.toFixed(2).replace(".", ",")} m`;
 
-export function nodePosition(doc: PlanDocument, id: string): { x: number; y: number } | null {
+export function nodePosition(doc: PlanDocument, id: string): PlanVertex | null {
   const p = doc.points.find((n) => n.id === id); if (p) return { x: p.x, y: p.y };
   const q = doc.panels.find((n) => n.id === id); if (q) return { x: q.x, y: q.y };
   return null;
 }
-export function conduitLength(doc: PlanDocument, c: Conduit): number { const a = nodePosition(doc, c.from); const b = nodePosition(doc, c.to); return !a || !b ? 0 : Math.hypot(b.x - a.x, b.y - a.y); }
+
+export function conduitPath(doc: PlanDocument, c: Conduit): PlanVertex[] {
+  const a = nodePosition(doc, c.from);
+  const b = nodePosition(doc, c.to);
+  if (!a || !b) return [];
+  return [a, ...(c.route ?? []), b];
+}
+
+export function conduitLength(doc: PlanDocument, c: Conduit): number {
+  const path = conduitPath(doc, c);
+  let total = 0;
+  for (let i = 1; i < path.length; i++) total += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+  return total;
+}
+
 export function architectureLength(e: ArchitecturalElement): number { return Math.hypot(e.x2 - e.x1, e.y2 - e.y1); }
-export function roomArea(r: Room): number { return r.w * r.h; }
+
+export function roomArea(r: Room): number {
+  const pts = r.points;
+  if (!pts || pts.length < 3) return r.w * r.h;
+  let sum = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+export function roomPerimeter(r: Room): number {
+  const pts = r.points;
+  if (!pts || pts.length < 3) return 2 * (r.w + r.h);
+  let total = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    total += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return total;
+}
+
+export function roomBounds(points: PlanVertex[]) {
+  const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
+  const x = Math.min(...xs), y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+}
+
 export function nextLabel(doc: PlanDocument, kind: ComponentKind): string { const def = CATALOG_BY_KIND[kind]; const n = doc.points.filter((p) => p.kind === kind).length + 1; return `${def.short}-${String(n).padStart(2, "0")}`; }
 
 export type PlanSummary = { totalPoints: number; lighting: number; outlets: number; equipment: number; installedPower: number; conduitLength: number; area: number };
