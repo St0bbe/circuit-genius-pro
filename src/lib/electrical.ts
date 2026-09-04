@@ -19,7 +19,7 @@ export const LAYERS: { id: LayerId; label: string; colorVar: string }[] = [
 export type ComponentKind =
   | "ponto_luz" | "luminaria" | "spot" | "arandela" | "perfil_led" | "sensor_presenca" | "fotocelula"
   | "interruptor_simples" | "interruptor_paralelo" | "interruptor_intermediario" | "dimmer" | "rele" | "comando_sensor"
-  | "tug" | "tug_dupla" | "tug_tripla" | "tug_usb" | "tue" | "tomada_equipamento" | "tomada_piso" | "tomada_externa"
+  | "tug" | "tug_dupla" | "tug_tripla" | "tug_usb" | "tue" | "tue_dupla" | "tomada_equipamento" | "tomada_piso" | "tomada_externa"
   | "chuveiro" | "torneira_eletrica" | "forno" | "cooktop" | "microondas" | "maquina_lavar" | "maquina_secar"
   | "ar_condicionado" | "bomba" | "motor" | "motor_portao" | "aquecedor" | "geladeira" | "freezer" | "lava_loucas"
   | "caixa_4x2" | "caixa_4x4" | "caixa_passagem" | "caixa_teto" | "condulete";
@@ -45,10 +45,11 @@ export const CATALOG: ComponentDef[] = [
   { kind: "rele", label: "Relé", short: "RL", layer: "interruptores", group: "Comandos", power: 0, voltage: 127, height: 1.3 },
   { kind: "comando_sensor", label: "Comando por sensor", short: "CS", layer: "interruptores", group: "Comandos", power: 0, voltage: 127, height: 1.3 },
   { kind: "tug", label: "Tomada TUG", short: "TUG", layer: "tomadas", group: "Tomadas", power: 100, voltage: 127, height: 0.3 },
-  { kind: "tug_dupla", label: "Tomada dupla", short: "2T", layer: "tomadas", group: "Tomadas", power: 200, voltage: 127, height: 0.3 },
-  { kind: "tug_tripla", label: "Tomada tripla", short: "3T", layer: "tomadas", group: "Tomadas", power: 300, voltage: 127, height: 0.3 },
+  { kind: "tug_dupla", label: "Tomada TUG dupla", short: "2TUG", layer: "tomadas", group: "Tomadas", power: 200, voltage: 127, height: 0.3 },
+  { kind: "tug_tripla", label: "Tomada TUG tripla", short: "3TUG", layer: "tomadas", group: "Tomadas", power: 300, voltage: 127, height: 0.3 },
   { kind: "tug_usb", label: "Tomada USB", short: "USB", layer: "tomadas", group: "Tomadas", power: 100, voltage: 127, height: 0.3 },
   { kind: "tue", label: "Tomada TUE", short: "TUE", layer: "tomadas", group: "Tomadas", power: 600, voltage: 127, height: 1.2 },
+  { kind: "tue_dupla", label: "Tomada TUE dupla", short: "2TUE", layer: "tomadas", group: "Tomadas", power: 1200, voltage: 127, height: 1.2 },
   { kind: "tomada_equipamento", label: "Tomada para equipamento", short: "TEQ", layer: "tomadas", group: "Tomadas", power: 1000, voltage: 127, height: 1.2 },
   { kind: "tomada_piso", label: "Tomada de piso", short: "TP", layer: "tomadas", group: "Tomadas", power: 100, voltage: 127, height: 0 },
   { kind: "tomada_externa", label: "Tomada externa", short: "TE", layer: "tomadas", group: "Tomadas", power: 100, voltage: 127, height: 0.6 },
