@@ -1,4 +1,5 @@
 import type { PlanDocument } from "@/lib/electrical";
+import { getCircuits, withCircuits } from "@/lib/circuits";
 import { analyzeProject } from "@/lib/engineering";
 
 export type PhaseLoad = { phase: "A" | "B" | "C"; power: number; circuits: string[] };
@@ -34,4 +35,29 @@ export function analyzePhaseBalance(doc: PlanDocument): PhaseBalance {
   const warning = maxDifferencePercent > 20 ? `Desequilíbrio estimado de ${maxDifferencePercent.toFixed(1)}% entre as fases. Revise a distribuição dos circuitos.` : null;
 
   return { phases: Object.values(phases), maxDifferencePercent, warning };
+}
+
+export function autoBalancePhases(doc: PlanDocument): PlanDocument {
+  const analysis = analyzeProject(doc);
+  const definitions = getCircuits(doc);
+  const candidates = analysis.circuits
+    .filter((c) => c.enabled && c.voltage === 127 && ["auto", "A", "B", "C"].includes(c.phase))
+    .sort((a, b) => b.demandPower - a.demandPower);
+
+  const totals: Record<"A" | "B" | "C", number> = { A: 0, B: 0, C: 0 };
+  for (const c of analysis.circuits.filter((c) => !candidates.some((x) => x.id === c.id))) {
+    if (c.phase === "A" || c.phase === "B" || c.phase === "C") totals[c.phase] += c.demandPower;
+    if (c.phase === "AB") { totals.A += c.demandPower / 2; totals.B += c.demandPower / 2; }
+    if (c.phase === "BC") { totals.B += c.demandPower / 2; totals.C += c.demandPower / 2; }
+    if (c.phase === "CA") { totals.C += c.demandPower / 2; totals.A += c.demandPower / 2; }
+  }
+
+  const assignment = new Map<string, "A" | "B" | "C">();
+  for (const c of candidates) {
+    const phase = (Object.entries(totals) as Array<["A" | "B" | "C", number]>).sort((a, b) => a[1] - b[1])[0][0];
+    assignment.set(c.id, phase);
+    totals[phase] += c.demandPower;
+  }
+
+  return withCircuits(doc, definitions.map((c) => assignment.has(c.id) ? { ...c, phase: assignment.get(c.id)! } : c));
 }
