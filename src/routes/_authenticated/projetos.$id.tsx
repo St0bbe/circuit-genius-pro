@@ -98,6 +98,7 @@ function EditorPage() {
   const loaded = useRef(false);
   const clipboard = useRef<{ type: NonNullable<Selection>["type"]; data: unknown } | null>(null);
   const history = useRef<HistoryState>({ past: [], future: [] });
+  const docRef = useRef<PlanDocument>(EMPTY_DOCUMENT);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -110,7 +111,9 @@ function EditorPage() {
 
   useEffect(() => {
     if (project && !loaded.current) {
-      setDoc(normalizeProjectDocument(project.document));
+      const loadedDoc = normalizeProjectDocument(project.document);
+      docRef.current = loadedDoc;
+      setDoc(loadedDoc);
       history.current = { past: [], future: [] };
       setHistoryVersion((v) => v + 1);
       loaded.current = true;
@@ -118,38 +121,38 @@ function EditorPage() {
   }, [project]);
 
   const update = useCallback((updater: (d: PlanDocument) => PlanDocument) => {
-    setDoc((current) => {
-      const next = updater(current);
-      if (next === current) return current;
-      history.current.past.push(current);
-      if (history.current.past.length > 100) history.current.past.shift();
-      history.current.future = [];
-      setHistoryVersion((v) => v + 1);
-      return next;
-    });
+    const current = docRef.current;
+    const next = updater(current);
+    if (next === current) return;
+    history.current.past.push(current);
+    if (history.current.past.length > 100) history.current.past.shift();
+    history.current.future = [];
+    docRef.current = next;
+    setDoc(next);
+    setHistoryVersion((v) => v + 1);
     setDirty(true);
   }, []);
 
   const undo = useCallback(() => {
-    setDoc((current) => {
-      const previous = history.current.past.pop();
-      if (!previous) return current;
-      history.current.future.push(current);
-      setHistoryVersion((v) => v + 1);
-      return previous;
-    });
+    const previous = history.current.past.pop();
+    if (!previous) return;
+    const current = docRef.current;
+    history.current.future.push(current);
+    docRef.current = previous;
+    setDoc(previous);
+    setHistoryVersion((v) => v + 1);
     setSelection(null);
     setDirty(true);
   }, []);
 
   const redo = useCallback(() => {
-    setDoc((current) => {
-      const next = history.current.future.pop();
-      if (!next) return current;
-      history.current.past.push(current);
-      setHistoryVersion((v) => v + 1);
-      return next;
-    });
+    const next = history.current.future.pop();
+    if (!next) return;
+    const current = docRef.current;
+    history.current.past.push(current);
+    docRef.current = next;
+    setDoc(next);
+    setHistoryVersion((v) => v + 1);
     setSelection(null);
     setDirty(true);
   }, []);
