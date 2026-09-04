@@ -10,7 +10,7 @@ export const LAYERS: { id: LayerId; label: string; colorVar: string }[] = [
   { id: "equipamentos", label: "Equipamentos", colorVar: "var(--layer-equipment)" },
   { id: "eletrodutos", label: "Eletrodutos", colorVar: "var(--layer-conduit)" },
   { id: "fiacao", label: "Fiação", colorVar: "var(--primary)" },
-  { id: "quadro", label: "Quadro", colorVar: "var(--layer-panel)" },
+  { id: "quadro", label: "Quadros", colorVar: "var(--layer-panel)" },
   { id: "dados", label: "Dados", colorVar: "var(--muted-foreground)" },
   { id: "seguranca", label: "Segurança", colorVar: "var(--destructive)" },
   { id: "outros", label: "Outros", colorVar: "var(--foreground)" },
@@ -79,7 +79,8 @@ export const CATALOG_BY_KIND: Record<ComponentKind, ComponentDef> = Object.fromE
 export type PlanVertex = { x: number; y: number };
 export type Room = { id: string; name: string; x: number; y: number; w: number; h: number; points?: PlanVertex[]; labelX?: number; labelY?: number };
 export type PlanPoint = { id: string; kind: ComponentKind; x: number; y: number; label: string; power: number; voltage: number; height: number; circuit: string; notes?: string; rotation?: number; mirrored?: boolean };
-export type Panel = { id: string; name: string; x: number; y: number; rotation?: number };
+export type PanelKind = "supply" | "distribution";
+export type Panel = { id: string; name: string; x: number; y: number; rotation?: number; kind?: PanelKind; upstreamPanelId?: string | null };
 export type ConduitType = "normal" | "ceiling" | "underground";
 export type Conduit = { id: string; from: string; to: string; diameter: number; type?: ConduitType; route?: PlanVertex[] };
 export type ArchitecturalKind = "wall" | "door" | "window";
@@ -106,7 +107,7 @@ export function normalizeDocument(raw: unknown): PlanDocument {
   return {
     rooms: Array.isArray(d.rooms) ? d.rooms : [],
     points: Array.isArray(d.points) ? d.points : [],
-    panels: Array.isArray(d.panels) ? d.panels : [],
+    panels: Array.isArray(d.panels) ? d.panels.map((p) => ({ ...p, kind: p.kind ?? "distribution", upstreamPanelId: p.upstreamPanelId ?? null })) : [],
     conduits: Array.isArray(d.conduits) ? d.conduits.map((c) => ({ ...c, type: c.type ?? "normal", route: Array.isArray(c.route) ? c.route : [] })) : [],
     architecture: Array.isArray(d.architecture) ? d.architecture : [],
   };
