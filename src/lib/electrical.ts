@@ -77,7 +77,7 @@ export const CATALOG: ComponentDef[] = [
 export const CATALOG_BY_KIND: Record<ComponentKind, ComponentDef> = Object.fromEntries(CATALOG.map((c) => [c.kind, c])) as Record<ComponentKind, ComponentDef>;
 
 export type PlanVertex = { x: number; y: number };
-export type Room = { id: string; name: string; x: number; y: number; w: number; h: number; points?: PlanVertex[] };
+export type Room = { id: string; name: string; x: number; y: number; w: number; h: number; points?: PlanVertex[]; labelX?: number; labelY?: number };
 export type PlanPoint = { id: string; kind: ComponentKind; x: number; y: number; label: string; power: number; voltage: number; height: number; circuit: string; notes?: string; rotation?: number; mirrored?: boolean };
 export type Panel = { id: string; name: string; x: number; y: number; rotation?: number };
 export type ConduitType = "normal" | "ceiling" | "underground";
