@@ -55,8 +55,77 @@ function feederConduitId(panelId: string) {
   return `auto-feeder-${panelId}`;
 }
 
+function nearestDistributionPanel(doc: PlanDocument, nodeId: string): Panel | null {
+  const distributions = doc.panels.filter((p) => panelKind(p) === "distribution" && nodePosition(doc, p.id));
+  if (!distributions.length) return doc.panels.find((p) => nodePosition(doc, p.id)) ?? null;
+
+  let best: Panel | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const panel of distributions) {
+    const d = distance(doc, panel.id, nodeId);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = panel;
+    }
+  }
+  return best;
+}
+
+function buildConduitTree(
+  doc: PlanDocument,
+  rootId: string,
+  targetIds: string[],
+  idPrefix: string,
+  diameter: number,
+): Conduit[] {
+  if (!nodePosition(doc, rootId)) return [];
+
+  const connected = new Set<string>([rootId]);
+  const remaining = new Set(targetIds.filter((id) => id !== rootId && nodePosition(doc, id)));
+  const generated: Conduit[] = [];
+
+  while (remaining.size) {
+    let bestFrom: string | null = null;
+    let bestTo: string | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const from of connected) {
+      for (const to of remaining) {
+        const d = distance(doc, from, to);
+        if (d < bestDistance) {
+          bestDistance = d;
+          bestFrom = from;
+          bestTo = to;
+        }
+      }
+    }
+
+    if (!bestFrom || !bestTo || !Number.isFinite(bestDistance)) break;
+
+    const a = nodePosition(doc, bestFrom)!;
+    const b = nodePosition(doc, bestTo)!;
+    generated.push({
+      id: `auto-${idPrefix}-${uid()}`,
+      from: bestFrom,
+      to: bestTo,
+      diameter,
+      type: "normal",
+      route: manhattanRoute(a, b),
+    });
+
+    connected.add(bestTo);
+    remaining.delete(bestTo);
+  }
+
+  return generated;
+}
+
 /**
- * Gera primeiro os alimentadores QA -> QD e depois as árvores dos circuitos finais.
+ * Gera a infraestrutura automática completa:
+ * 1. alimentadores QA -> QD;
+ * 2. árvores QD -> pontos de todos os circuitos ativos;
+ * 3. pontos ainda sem circuito também são conectados ao QD mais próximo.
+ *
  * Todos os trechos continuam sendo eletrodutos normais/editáveis na planta.
  */
 export function autoRouteConduits(doc: PlanDocument): AutoRouteResult {
@@ -64,14 +133,18 @@ export function autoRouteConduits(doc: PlanDocument): AutoRouteResult {
   const manual = doc.conduits.filter((c) => !c.id.startsWith("auto-"));
   const generated: Conduit[] = [];
   const skippedCircuits: string[] = [];
+  const routedPointIds = new Set<string>();
 
   const distributionPanels = doc.panels.filter((p) => panelKind(p) === "distribution");
+
+  // Alimentação principal: QA -> QD.
   for (const distribution of distributionPanels) {
     const supply = resolveUpstreamSupply(doc, distribution);
     if (!supply || supply.id === distribution.id) continue;
     const a = nodePosition(doc, supply.id);
     const b = nodePosition(doc, distribution.id);
     if (!a || !b) continue;
+
     generated.push({
       id: feederConduitId(distribution.id),
       from: supply.id,
@@ -82,50 +155,54 @@ export function autoRouteConduits(doc: PlanDocument): AutoRouteResult {
     });
   }
 
+  // Distribuição final: QD -> todos os pontos pertencentes a circuitos ativos.
   for (const circuit of circuits) {
     const preferredDistribution = doc.panels.find((p) => p.id === circuit.panelId && panelKind(p) === "distribution");
-    const fallbackDistribution = doc.panels.find((p) => panelKind(p) === "distribution");
-    const panelId = preferredDistribution?.id ?? circuit.panelId ?? fallbackDistribution?.id ?? doc.panels[0]?.id ?? null;
-    const loads = doc.points.filter((p) => p.circuit.trim().toUpperCase() === circuit.id.toUpperCase());
-    if (!panelId || loads.length === 0 || !nodePosition(doc, panelId)) {
+    const circuitLoads = doc.points.filter((p) => p.circuit.trim().toUpperCase() === circuit.id.toUpperCase());
+
+    if (!circuitLoads.length) {
       skippedCircuits.push(circuit.id);
       continue;
     }
 
-    const connected = new Set<string>([panelId]);
-    const remaining = new Set(loads.map((p) => p.id));
+    const fallbackDistribution = circuitLoads.length
+      ? nearestDistributionPanel(doc, circuitLoads[0].id)
+      : distributionPanels[0] ?? null;
+    const panel = preferredDistribution ?? fallbackDistribution;
 
-    while (remaining.size) {
-      let bestFrom: string | null = null;
-      let bestTo: string | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (const from of connected) {
-        for (const to of remaining) {
-          const d = distance(doc, from, to);
-          if (d < bestDistance) {
-            bestDistance = d;
-            bestFrom = from;
-            bestTo = to;
-          }
-        }
-      }
-      if (!bestFrom || !bestTo || !Number.isFinite(bestDistance)) break;
-      const a = nodePosition(doc, bestFrom)!;
-      const b = nodePosition(doc, bestTo)!;
-      generated.push({
-        id: `auto-${circuit.id}-${uid()}`,
-        from: bestFrom,
-        to: bestTo,
-        diameter: 25,
-        type: "normal",
-        route: manhattanRoute(a, b),
-      });
-      connected.add(bestTo);
-      remaining.delete(bestTo);
+    if (!panel || !nodePosition(doc, panel.id)) {
+      skippedCircuits.push(circuit.id);
+      continue;
     }
+
+    const targetIds = circuitLoads.map((p) => p.id);
+    const tree = buildConduitTree(doc, panel.id, targetIds, circuit.id, 25);
+    generated.push(...tree);
+    targetIds.forEach((id) => routedPointIds.add(id));
   }
 
-  return { doc: { ...doc, conduits: [...manual, ...generated] }, created: generated.length, skippedCircuits };
+  // Cobertura total do projeto: pontos sem circuito, com circuito desativado ou legado
+  // não podem ficar isolados quando o usuário solicita eletrodutos automáticos.
+  const remainingPoints = doc.points.filter((p) => !routedPointIds.has(p.id) && nodePosition(doc, p.id));
+  const orphanGroups = new Map<string, string[]>();
+
+  for (const point of remainingPoints) {
+    const panel = nearestDistributionPanel(doc, point.id);
+    if (!panel) continue;
+    const ids = orphanGroups.get(panel.id) ?? [];
+    ids.push(point.id);
+    orphanGroups.set(panel.id, ids);
+  }
+
+  for (const [panelId, targetIds] of orphanGroups) {
+    generated.push(...buildConduitTree(doc, panelId, targetIds, `geral-${panelId}`, 25));
+  }
+
+  return {
+    doc: { ...doc, conduits: [...manual, ...generated] },
+    created: generated.length,
+    skippedCircuits,
+  };
 }
 
 function rolesForCircuit(doc: PlanDocument, circuitId: string): WireRole[] {
