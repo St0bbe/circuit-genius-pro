@@ -37,8 +37,9 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "room_free", label: "Ambiente livre", hint: "Clique nos cantos do ambiente e clique no primeiro ponto para fechar" },
   { id: "wall", label: "Parede", hint: "Arraste para desenhar uma parede" },
   { id: "door", label: "Porta", hint: "Arraste sobre a parede para inserir uma porta" },
+  { id: "passage", label: "Passagem", hint: "Arraste sobre a parede para criar um vão sem folha de porta" },
   { id: "window", label: "Janela", hint: "Arraste sobre a parede para inserir uma janela" },
-  { id: "point", label: "Ponto", hint: "Clique para inserir o componente escolhido" },
+  { id: "point", label: "+ Adicionar ponto", hint: "Escolha primeiro o componente na biblioteca e depois clique na planta" },
   { id: "panel", label: "Quadro", hint: "Clique para posicionar o quadro" },
   { id: "conduit", label: "Eletroduto", hint: "Clique em dois pontos/quadros; curvas são criadas e podem ser ajustadas" },
 ];
@@ -190,6 +191,12 @@ function EditorPage() {
     toast.success(`${result.created} circuito(s) com fiação automática. O trajeto acompanha os eletrodutos editáveis.`);
   }, [doc, update]);
 
+  const openPointLibrary = useCallback(() => {
+    setTool("navigate");
+    setSelection(null);
+    setMobilePanel("library");
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -231,13 +238,14 @@ function EditorPage() {
       if (e.key.toLowerCase() === "f") setTool("room_free");
       if (e.key.toLowerCase() === "w") setTool("wall");
       if (e.key.toLowerCase() === "d") setTool("door");
+      if (e.key.toLowerCase() === "g") setTool("passage");
       if (e.key.toLowerCase() === "j") setTool("window");
-      if (e.key.toLowerCase() === "p") setTool("point");
+      if (e.key.toLowerCase() === "p") { e.preventDefault(); openPointLibrary(); }
       if (e.key.toLowerCase() === "e") setTool("conduit");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [copySelection, pasteSelection, redo, selection, undo, update]);
+  }, [copySelection, openPointLibrary, pasteSelection, redo, selection, undo, update]);
 
   const summary = useMemo(() => summarize(doc), [doc]);
   const activeTool = TOOLS.find((t) => t.id === tool);
@@ -248,6 +256,15 @@ function EditorPage() {
   const pickComponent = (kind: ComponentKind) => {
     setActiveKind(kind);
     setTool("point");
+    closeMobilePanels();
+  };
+
+  const activateTool = (toolId: Tool) => {
+    if (toolId === "point") {
+      openPointLibrary();
+      return;
+    }
+    setTool(toolId);
     closeMobilePanels();
   };
 
@@ -292,7 +309,7 @@ function EditorPage() {
         </div>
 
         <div className="scrollbar-none flex items-center gap-1 overflow-x-auto border-t border-border/60 px-2 py-1.5 sm:px-3 xl:justify-center">
-          {TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => { setTool(t.id); closeMobilePanels(); }}>{t.label}</Button>)}
+          {TOOLS.map((t) => <Button key={t.id} className="shrink-0" size="sm" variant={tool === t.id ? "default" : "ghost"} onClick={() => activateTool(t.id)}>{t.label}</Button>)}
           <span className="mx-1 h-5 w-px shrink-0 bg-border" />
           <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoConduits}>Auto eletrodutos</Button>
           <Button className="shrink-0" size="sm" variant="secondary" onClick={runAutoWiring}>Auto fiação</Button>
@@ -311,7 +328,7 @@ function EditorPage() {
           </div>
           <div className={cn("pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full border border-border bg-card/95 px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm sm:bottom-4 sm:px-4 sm:text-xs")}>
             <span className="sm:hidden">{activeTool?.hint}</span>
-            <span className="hidden sm:inline">{activeTool?.hint} · N navegar · V selecionar · Ctrl+Z/Y desfazer/refazer · Ctrl+C/V duplicar · R girar · M espelhar</span>
+            <span className="hidden sm:inline">{activeTool?.hint} · N navegar · V selecionar · P escolher ponto · G passagem · Ctrl+Z/Y desfazer/refazer · Ctrl+C/V duplicar · R girar · M espelhar</span>
           </div>
         </main>
 
@@ -319,11 +336,11 @@ function EditorPage() {
           {propertiesContent}
         </aside>
 
-        {mobilePanel && <button aria-label="Fechar painel" type="button" className="absolute inset-0 z-30 bg-background/60 backdrop-blur-[1px]" onClick={closeMobilePanels} />}
+        {mobilePanel && <button aria-label="Fechar painel" type="button" className="absolute inset-0 z-30 bg-background/60 backdrop-blur-[1px] xl:hidden" onClick={closeMobilePanels} />}
 
         <aside className={cn("absolute inset-y-0 left-0 z-40 w-[min(88vw,320px)] transform bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "library" ? "translate-x-0" : "-translate-x-full")}>
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Biblioteca e camadas</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Escolha o ponto para adicionar</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
             <div className="min-h-0 flex-1 overflow-y-auto"><LibraryPanel activeKind={activeKind} onPick={pickComponent} visible={visible} onToggleLayer={(l) => setVisible((v) => ({ ...v, [l]: !v[l] }))} /></div>
           </div>
         </aside>
