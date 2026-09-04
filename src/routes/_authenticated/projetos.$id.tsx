@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PlanCanvas, type Selection, type Tool } from "@/components/plan/PlanCanvas";
 import { LibraryPanel } from "@/components/plan/LibraryPanel";
 import { PropertiesPanel } from "@/components/plan/PropertiesPanel";
+import { PlanSummaryPanel } from "@/components/plan/PlanSummaryPanel";
 import { CircuitsSummary } from "@/components/plan/CircuitsSummary";
 import { EngineeringWorkspace } from "@/components/plan/EngineeringWorkspace";
 import { ProjectToolsPanel } from "@/components/plan/ProjectToolsPanel";
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/_authenticated/projetos/$id")({
 });
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
+  { id: "navigate", label: "↖ Navegar", hint: "Arraste em qualquer lugar para mover a visualização sem alterar o projeto" },
   { id: "select", label: "Selecionar", hint: "Clique para selecionar, arraste para mover" },
   { id: "room", label: "Ambiente", hint: "Arraste para criar um ambiente retangular" },
   { id: "room_free", label: "Ambiente livre", hint: "Clique nos cantos do ambiente e clique no primeiro ponto para fechar" },
@@ -42,14 +44,14 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
 ];
 
 const ALL_VISIBLE = Object.fromEntries(LAYERS.map((l) => [l.id, true])) as Record<LayerId, boolean>;
-type MobilePanel = "library" | "properties" | null;
+type MobilePanel = "library" | "properties" | "summary" | null;
 type HistoryState = { past: PlanDocument[]; future: PlanDocument[] };
 
 function EditorPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const [doc, setDoc] = useState<PlanDocument>(EMPTY_DOCUMENT);
-  const [tool, setTool] = useState<Tool>("room");
+  const [tool, setTool] = useState<Tool>("navigate");
   const [activeKind, setActiveKind] = useState<ComponentKind>("ponto_luz");
   const [visible, setVisible] = useState<Record<LayerId, boolean>>(ALL_VISIBLE);
   const [selection, setSelection] = useState<Selection>(null);
@@ -222,7 +224,8 @@ function EditorPage() {
         update((d) => ({ ...d, points: d.points.map((p) => p.id === selection.id ? { ...p, mirrored: !p.mirrored } : p) }));
         return;
       }
-      if (e.key === "Escape") setTool("select");
+      if (e.key === "Escape") setTool("navigate");
+      if (e.key.toLowerCase() === "n") setTool("navigate");
       if (e.key.toLowerCase() === "v") setTool("select");
       if (e.key.toLowerCase() === "a") setTool("room");
       if (e.key.toLowerCase() === "f") setTool("room_free");
@@ -251,7 +254,7 @@ function EditorPage() {
   const propertiesContent = (
     <>
       <div className="min-h-[260px] sm:min-h-[320px]">
-        <PropertiesPanel doc={doc} selection={selection} summary={summary} onChange={update} onSelect={setSelection} />
+        <PropertiesPanel doc={doc} selection={selection} onChange={update} onSelect={setSelection} />
       </div>
       <CircuitsSummary doc={doc} />
       <EngineeringWorkspace doc={doc} onChange={update} />
@@ -261,6 +264,8 @@ function EditorPage() {
       <PlatformPanel doc={doc} onChange={update} />
     </>
   );
+
+  const summaryContent = <PlanSummaryPanel doc={doc} summary={summary} />;
 
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background">
@@ -278,6 +283,7 @@ function EditorPage() {
           <div className="flex shrink-0 items-center gap-1.5">
             <Button size="sm" variant="ghost" disabled={!canUndo} onClick={undo} title="Desfazer (Ctrl+Z)">↶ <span className="hidden md:inline">Desfazer</span></Button>
             <Button size="sm" variant="ghost" disabled={!canRedo} onClick={redo} title="Refazer (Ctrl+Y / Ctrl+Shift+Z)">↷ <span className="hidden md:inline">Refazer</span></Button>
+            <Button size="sm" variant={mobilePanel === "summary" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "summary" ? null : "summary")}>Resumo</Button>
             <Button className="xl:hidden" size="sm" variant={mobilePanel === "library" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "library" ? null : "library")}>Biblioteca</Button>
             <Button className="xl:hidden" size="sm" variant={mobilePanel === "properties" ? "default" : "secondary"} onClick={() => setMobilePanel((p) => p === "properties" ? null : "properties")}>Painel</Button>
             <span className="hidden text-[10px] uppercase tracking-wide text-muted-foreground md:inline">{saving ? "salvando..." : dirty ? "pendente" : "salvo"}</span>
@@ -301,11 +307,11 @@ function EditorPage() {
         <main className="relative min-w-0 flex-1 overflow-hidden">
           <PlanReferenceOverlay doc={doc} />
           <div className="absolute inset-0 z-10 touch-none">
-            <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("select")} />
+            <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("navigate")} />
           </div>
           <div className={cn("pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full border border-border bg-card/95 px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm sm:bottom-4 sm:px-4 sm:text-xs")}>
             <span className="sm:hidden">{activeTool?.hint}</span>
-            <span className="hidden sm:inline">{activeTool?.hint} · Ctrl+Z/Y desfazer/refazer · Ctrl+C/V duplicar · R girar · M espelhar</span>
+            <span className="hidden sm:inline">{activeTool?.hint} · N navegar · V selecionar · Ctrl+Z/Y desfazer/refazer · Ctrl+C/V duplicar · R girar · M espelhar</span>
           </div>
         </main>
 
@@ -313,7 +319,7 @@ function EditorPage() {
           {propertiesContent}
         </aside>
 
-        {mobilePanel && <button aria-label="Fechar painel" type="button" className="absolute inset-0 z-30 bg-background/60 backdrop-blur-[1px] xl:hidden" onClick={closeMobilePanels} />}
+        {mobilePanel && <button aria-label="Fechar painel" type="button" className="absolute inset-0 z-30 bg-background/60 backdrop-blur-[1px]" onClick={closeMobilePanels} />}
 
         <aside className={cn("absolute inset-y-0 left-0 z-40 w-[min(88vw,320px)] transform bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "library" ? "translate-x-0" : "-translate-x-full")}>
           <div className="flex h-full min-h-0 flex-col">
@@ -325,6 +331,11 @@ function EditorPage() {
         <aside className={cn("absolute inset-y-0 right-0 z-40 flex w-[min(94vw,460px)] transform flex-col bg-sidebar shadow-2xl transition-transform duration-200 xl:hidden", mobilePanel === "properties" ? "translate-x-0" : "translate-x-full")}>
           <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Projeto e propriedades</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{propertiesContent}</div>
+        </aside>
+
+        <aside className={cn("absolute inset-y-0 right-0 z-50 flex w-[min(92vw,380px)] transform flex-col border-l border-border bg-sidebar shadow-2xl transition-transform duration-200", mobilePanel === "summary" ? "translate-x-0" : "translate-x-full")}>
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2"><span className="text-sm font-medium">Resumo da planta</span><Button size="sm" variant="ghost" onClick={closeMobilePanels}>Fechar</Button></div>
+          <div className="min-h-0 flex-1 overflow-y-auto">{summaryContent}</div>
         </aside>
       </div>
 
