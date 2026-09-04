@@ -14,18 +14,17 @@ import {
   type ComponentKind,
   type ConduitType,
   type PlanDocument,
-  type PlanSummary,
 } from "@/lib/electrical";
 import type { Selection } from "./PlanCanvas";
 
-type Props = { doc: PlanDocument; selection: Selection; summary: PlanSummary; onChange: (updater: (doc: PlanDocument) => PlanDocument) => void; onSelect: (sel: Selection) => void };
+type Props = { doc: PlanDocument; selection: Selection; onChange: (updater: (doc: PlanDocument) => PlanDocument) => void; onSelect: (sel: Selection) => void };
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-1"><Label className="tech-label">{label}</Label>{children}</div>; }
 function Row({ k, v }: { k: string; v: string }) { return <div className="flex items-baseline justify-between gap-2 border-b border-border/60 py-1.5 last:border-0"><span className="text-xs text-muted-foreground">{k}</span><span className="font-mono text-sm">{v}</span></div>; }
 
 const OUTLET_KINDS = CATALOG.filter((item) => item.group === "Tomadas");
 const outletLevel = (height: number) => height >= 1.8 ? "Alta" : height >= 0.8 ? "Média" : "Baixa";
 
-export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }: Props) {
+export function PropertiesPanel({ doc, selection, onChange, onSelect }: Props) {
   const remove = () => {
     if (!selection) return;
     const { type, id } = selection;
@@ -45,6 +44,7 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
   const panel = selection?.type === "panel" ? doc.panels.find((p) => p.id === selection.id) : undefined;
   const conduit = selection?.type === "conduit" ? doc.conduits.find((c) => c.id === selection.id) : undefined;
   const isOutlet = point ? CATALOG_BY_KIND[point.kind]?.layer === "tomadas" : false;
+  const door = architecture?.kind === "door" ? architecture as typeof architecture & { openingAngle?: number } : undefined;
 
   const patchPoint = (patch: Partial<NonNullable<typeof point>>) => {
     if (!point) return;
@@ -55,6 +55,11 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
     const def = CATALOG_BY_KIND[kind];
     if (!def) return;
     patchPoint({ kind, power: def.power, voltage: def.voltage, height: def.height });
+  };
+
+  const patchDoor = (patch: { openingDirection?: "left" | "right"; openingAngle?: number }) => {
+    if (!door) return;
+    onChange((d) => ({ ...d, architecture: d.architecture.map((a) => a.id === door.id ? { ...a, ...patch } : a) }));
   };
 
   const addConduitBend = () => {
@@ -118,7 +123,19 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
       <div><p className="font-mono text-base text-primary">{architecture.kind === "wall" ? "Parede" : architecture.kind === "door" ? "Porta" : "Janela"}</p><p className="text-xs text-muted-foreground">Elemento arquitetônico</p></div>
       <Row k="Comprimento" v={fmtM(architectureLength(architecture))} />
       {architecture.kind === "wall" && <Field label="Espessura (m)"><Input type="number" step="0.05" min="0.05" value={architecture.thickness ?? 0.15} onChange={(e) => onChange((d) => ({ ...d, architecture: d.architecture.map((a) => a.id === architecture.id ? { ...a, thickness: Math.max(0.05, Number(e.target.value) || 0.15) } : a) }))} /></Field>}
-      {architecture.kind === "door" && <Button size="sm" variant="secondary" onClick={() => onChange((d) => ({ ...d, architecture: d.architecture.map((a) => a.id === architecture.id ? { ...a, openingDirection: a.openingDirection === "left" ? "right" : "left" } : a) }))}>Inverter abertura</Button>}
+      {door && <div className="space-y-3 rounded-md border border-border p-3">
+        <Field label="Lado de abertura">
+          <select className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={door.openingDirection ?? "left"} onChange={(e) => patchDoor({ openingDirection: e.target.value as "left" | "right" })}>
+            <option value="left">Esquerda</option>
+            <option value="right">Direita</option>
+          </select>
+        </Field>
+        <Field label="Ângulo de abertura (°)"><Input type="number" min="15" max="180" step="5" value={door.openingAngle ?? 90} onChange={(e) => patchDoor({ openingAngle: Math.min(180, Math.max(15, Number(e.target.value) || 90)) })} /></Field>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[45, 90, 120].map((angle) => <Button key={angle} size="sm" variant={(door.openingAngle ?? 90) === angle ? "default" : "secondary"} onClick={() => patchDoor({ openingAngle: angle })}>{angle}°</Button>)}
+        </div>
+        <p className="text-[11px] text-muted-foreground">O arco e a folha aberta são desenhados na planta conforme o lado e o ângulo escolhidos.</p>
+      </div>}
       <Row k="Início" v={`${architecture.x1.toFixed(2)} ; ${architecture.y1.toFixed(2)} m`} /><Row k="Fim" v={`${architecture.x2.toFixed(2)} ; ${architecture.y2.toFixed(2)} m`} />
     </div>}
 
@@ -142,7 +159,6 @@ export function PropertiesPanel({ doc, selection, summary, onChange, onSelect }:
     </div>}
 
     {selection && <Button variant="destructive" size="sm" className="mt-4" onClick={remove}>Excluir elemento</Button>}
-    <div className="mt-6"><p className="tech-label mb-2">Resumo da planta</p><Row k="Ambientes" v={`${doc.rooms.length} · ${summary.area.toFixed(2)} m²`} /><Row k="Paredes/aberturas" v={String(doc.architecture.length)} /><Row k="Pontos de luz" v={String(summary.lighting)} /><Row k="Tomadas" v={String(summary.outlets)} /><Row k="Equipamentos" v={String(summary.equipment)} /><Row k="Quadros" v={String(doc.panels.length)} /><Row k="Eletroduto total" v={fmtM(summary.conduitLength)} /><Row k="Potência instalada" v={`${summary.installedPower.toLocaleString("pt-BR")} VA`} /></div>
   </div>;
 }
 
