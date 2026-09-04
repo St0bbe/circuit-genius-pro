@@ -15,9 +15,17 @@ export function kindColor(kind: ComponentKind) {
 
 type GlyphProps = { kind: ComponentKind; size?: number; height?: number };
 
+type OutletLevel = "low" | "mid" | "high";
+
 /**
  * Símbolos de planta baseados na convenção brasileira tradicional da NBR 5444:1989.
  * A origem (0,0) dos símbolos de parede é o ponto exato de fixação na parede.
+ *
+ * Tomadas:
+ * - baixa: triângulo vazado;
+ * - média: triângulo com metade inferior preenchida;
+ * - alta: triângulo totalmente preenchido;
+ * - dupla/tripla: triângulos repetidos lado a lado.
  */
 export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
   const c = kindColor(kind);
@@ -27,7 +35,7 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
   const text = (value: string, y = 3) => <text y={y} textAnchor="middle" fill={c} fontSize="7.5" fontWeight="600" fontFamily="var(--font-mono)">{value}</text>;
 
   const outletHeight = height ?? CATALOG_BY_KIND[kind]?.height ?? 0.3;
-  const outletLevel: "low" | "mid" | "high" = outletHeight >= 1.8 ? "high" : outletHeight >= 0.8 ? "mid" : "low";
+  const outletLevel: OutletLevel = outletHeight >= 1.8 ? "high" : outletHeight >= 0.8 ? "mid" : "low";
 
   const outletTriangle = (count = 1, floor = false, suffix?: string) => {
     if (floor) {
@@ -37,25 +45,29 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
       </>;
     }
 
+    const triangleWidth = 9;
+    const triangleHalfHeight = 4;
     const spacing = 7;
-    const offsets = Array.from({ length: count }, (_, index) => (index - (count - 1) / 2) * spacing);
+    const startX = 5;
 
-    const renderTriangle = (offsetY: number, index: number) => {
-      const top = offsetY - 3.2;
-      const bottom = offsetY + 3.2;
-      const outline = `M 5 ${top} L 15 ${offsetY} L 5 ${bottom} Z`;
-      const lowerHalf = `M 5 ${offsetY} L 15 ${offsetY} L 5 ${bottom} Z`;
+    const renderTriangle = (index: number) => {
+      const baseX = startX + index * spacing;
+      const tipX = baseX + triangleWidth;
+      const outline = `M ${baseX} ${-triangleHalfHeight} L ${tipX} 0 L ${baseX} ${triangleHalfHeight} Z`;
+      const lowerHalf = `M ${baseX} 0 L ${tipX} 0 L ${baseX} ${triangleHalfHeight} Z`;
 
       return <g key={index}>
-        <line x1="0" y1={offsetY} x2="5" y2={offsetY} {...common} />
         <path d={outline} {...common} fill={outletLevel === "high" ? c : "none"} />
         {outletLevel === "mid" && <path d={lowerHalf} fill={c} stroke="none" />}
       </g>;
     };
 
+    const suffixX = startX + (count - 1) * spacing + triangleWidth + 2.5;
+
     return <>
-      {offsets.map(renderTriangle)}
-      {suffix && <text x="18" y="3" fill={c} fontSize="5" fontWeight="700" fontFamily="var(--font-mono)">{suffix}</text>}
+      <line x1="0" y1="0" x2={startX} y2="0" {...common} />
+      {Array.from({ length: count }, (_, index) => renderTriangle(index))}
+      {suffix && <text x={suffixX} y="2.5" fill={c} fontSize="4.5" fontWeight="700" fontFamily="var(--font-mono)">{suffix}</text>}
     </>;
   };
 
@@ -118,5 +130,7 @@ export function SymbolGlyph({ kind, size = 22, height }: GlyphProps) {
 }
 
 export function SymbolPreview({ kind }: { kind: ComponentKind }) {
-  return <svg width="32" height="32" viewBox="-16 -16 32 32" aria-hidden="true"><SymbolGlyph kind={kind} size={22} height={CATALOG_BY_KIND[kind]?.height} /></svg>;
+  const isMultiOutlet = kind === "tug_dupla" || kind === "tue_dupla" || kind === "tug_tripla";
+  const viewBox = isMultiOutlet ? "-4 -16 38 32" : "-16 -16 32 32";
+  return <svg width="38" height="32" viewBox={viewBox} aria-hidden="true"><SymbolGlyph kind={kind} size={22} height={CATALOG_BY_KIND[kind]?.height} /></svg>;
 }
