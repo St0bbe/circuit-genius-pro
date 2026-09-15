@@ -20,7 +20,7 @@ import {
   type PlanDocument,
   type PlanVertex,
 } from "@/lib/electrical";
-import { getWireRuns } from "@/lib/auto-routing";
+import { getWireRuns, wireSection, withWireRuns, type WireRun } from "@/lib/auto-routing";
 import { SymbolGlyph, kindColor } from "./SymbolGlyph";
 
 export type Tool = "navigate" | "select" | "room" | "room_free" | "wall" | "door" | "passage" | "window" | "point" | "panel" | "panel_supply" | "panel_distribution" | "conduit";
@@ -45,6 +45,7 @@ type DragState =
   | { kind: "pan"; ox: number; oy: number }
   | { kind: "move"; id: string; type: string; ox: number; oy: number }
   | { kind: "room-label"; id: string; ox: number; oy: number }
+  | { kind: "wire-label"; id: string; ox: number; oy: number }
   | { kind: "conduit-bend"; id: string; index: number };
 
 export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection, onSelect, onToolDone, onPanelDoubleClick }: Props) {
@@ -55,6 +56,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   const [roomPolygon, setRoomPolygon] = useState<PlanVertex[]>([]);
   const [conduitFrom, setConduitFrom] = useState<string | null>(null);
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
+  const [editingWireRunId, setEditingWireRunId] = useState<string | null>(null);
   const dragRef = useRef<DragState | null>(null);
 
   const editingPoint = editingPointId ? doc.points.find((p) => p.id === editingPointId) : undefined;
@@ -145,6 +147,10 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
       const w = toWorld(e.clientX, e.clientY), labelX = w.x - drag.ox, labelY = w.y - drag.oy;
       onChange((d) => ({ ...d, rooms: d.rooms.map((room) => room.id === drag.id ? { ...room, labelX, labelY } : room) })); return;
     }
+    if (drag?.kind === "wire-label") {
+      const w = toWorld(e.clientX, e.clientY), labelX = w.x - drag.ox, labelY = w.y - drag.oy;
+      onChange((d) => withWireRuns(d, getWireRuns(d).map((run) => run.id === drag.id ? { ...run, labelX, labelY } : run))); return;
+    }
     if (drag?.kind === "conduit-bend") {
       const w = toWorld(e.clientX, e.clientY), next = { x: snap(w.x), y: snap(w.y) };
       onChange((d) => ({ ...d, conduits: d.conduits.map((c) => c.id === drag.id ? { ...c, route: (c.route ?? []).map((p, i) => i === drag.index ? next : p) } : c) })); return;
@@ -191,6 +197,7 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
     dragRef.current = { kind: "move", type, id, ox: w.x - px, oy: w.y - py }; onSelect({ type: type as NonNullable<Selection>["type"], id });
   };
   const startRoomLabelMove = (e: React.MouseEvent, id: string, px: number, py: number) => { if (tool !== "select") return; e.stopPropagation(); const w = toWorld(e.clientX, e.clientY); dragRef.current = { kind: "room-label", id, ox: w.x - px, oy: w.y - py }; onSelect({ type: "room", id }); };
+  const startWireLabelMove = (e: React.MouseEvent, id: string, px: number, py: number) => { if (tool !== "select") return; e.stopPropagation(); const w = toWorld(e.clientX, e.clientY); dragRef.current = { kind: "wire-label", id, ox: w.x - px, oy: w.y - py }; };
   const startBendMove = (e: React.MouseEvent, id: string, index: number) => { if (tool !== "select") return; e.stopPropagation(); dragRef.current = { kind: "conduit-bend", id, index }; onSelect({ type: "conduit", id }); };
   const handleNodeClick = (e: React.MouseEvent, id: string) => {
     if (tool !== "conduit") return; e.stopPropagation();
@@ -203,6 +210,11 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
   const isSel = (type: string, id: string) => selection?.type === type && selection.id === id;
   const cursor = tool === "navigate" ? "grab" : tool === "select" ? "default" : ["room", "room_free", "wall", "door", "passage", "window"].includes(tool) ? "crosshair" : tool === "conduit" ? "cell" : "copy";
   const wireRuns = getWireRuns(doc);
+  const editingWireRun = editingWireRunId ? wireRuns.find((run) => run.id === editingWireRunId) : undefined;
+  const patchWireRun = (patch: Partial<WireRun>) => {
+    if (!editingWireRunId) return;
+    onChange((d) => withWireRuns(d, getWireRuns(d).map((run) => run.id === editingWireRunId ? { ...run, ...patch } : run)));
+  };
 
   return <svg ref={svgRef} className="h-full w-full select-none blueprint-surface" style={{ cursor }} onWheel={handleWheel} onMouseDown={onBackgroundDown} onMouseMove={onMouseMove} onMouseUp={endInteraction} onMouseLeave={endInteraction} onContextMenu={(e) => e.preventDefault()}>
     <g transform={`translate(${view.x} ${view.y}) scale(${view.z})`}>
@@ -219,9 +231,9 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
         return <g key={a.id} onMouseDown={(e) => startMove(e, "architecture", a.id, a.x1, a.y1)}>{architecturalKind === "wall" && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={selected ? "var(--primary)" : "var(--wall)"} strokeWidth={Math.max(4, (a.thickness ?? 0.15) * PX_PER_M)} />}{architecturalKind === "window" && <><line x1={x1 + nx * 3} y1={y1 + ny * 3} x2={x2 + nx * 3} y2={y2 + ny * 3} stroke="var(--foreground)" strokeWidth={2} /><line x1={x1 - nx * 3} y1={y1 - ny * 3} x2={x2 - nx * 3} y2={y2 - ny * 3} stroke="var(--foreground)" strokeWidth={2} /></>}{architecturalKind === "passage" && <><line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--surface)" strokeWidth={10} /><line x1={x1 - nx * 5} y1={y1 - ny * 5} x2={x1 + nx * 5} y2={y1 + ny * 5} stroke="var(--foreground)" strokeWidth={1.8} /><line x1={x2 - nx * 5} y1={y2 - ny * 5} x2={x2 + nx * 5} y2={y2 + ny * 5} stroke="var(--foreground)" strokeWidth={1.8} /></>}{door && <><line x1={hingeX} y1={hingeY} x2={openX} y2={openY} stroke={selected ? "var(--primary)" : "var(--foreground)"} strokeWidth={2.5} /><path d={`M ${freeX} ${freeY} A ${len} ${len} 0 0 ${sweep} ${openX} ${openY}`} fill="none" stroke="var(--muted-foreground)" strokeWidth={1.2} strokeDasharray="4 3" /><circle cx={hingeX} cy={hingeY} r={2.5} fill="var(--foreground)" /></>}</g>;
       })}
 
-      {visible.eletrodutos && doc.conduits.map((c) => { const path = conduitPath(doc, c); if (path.length < 2) return null; const selected = isSel("conduit", c.id), middle = path[Math.floor(path.length / 2)], stroke = selected ? "var(--primary)" : "var(--layer-conduit)", dash = c.type === "underground" ? "3 5" : undefined; return <g key={c.id} onMouseDown={(e) => { if (tool === "navigate") return; e.stopPropagation(); onSelect({ type: "conduit", id: c.id }); }}><polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke={stroke} strokeWidth={selected ? 3.5 : 2.5} strokeDasharray={dash} /><text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M - 7} textAnchor="middle" fill="var(--layer-conduit)" fontSize={10}>{fmtM(conduitLength(doc, c))}</text>{selected && (c.route ?? []).map((p, index) => <circle key={index} cx={p.x * PX_PER_M} cy={p.y * PX_PER_M} r={5.5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} onMouseDown={(e) => startBendMove(e, c.id, index)} />)}</g>; })}
+      {visible.eletrodutos && doc.conduits.map((c) => { const path = conduitPath(doc, c); if (path.length < 2) return null; const selected = isSel("conduit", c.id), middle = path[Math.floor(path.length / 2)], stroke = selected ? "var(--primary)" : "var(--layer-conduit)", dash = c.type === "underground" ? "3 5" : undefined, passingWires = wireRuns.filter((run) => run.conduitIds.includes(c.id)), wireText = passingWires.map((run) => `${run.circuitId} ${String(wireSection(doc, run)).replace(".", ",")}mm²`).join(" · "); return <g key={c.id} onMouseDown={(e) => { if (tool === "navigate") return; e.stopPropagation(); onSelect({ type: "conduit", id: c.id }); }} onDoubleClick={(e) => { e.stopPropagation(); if (passingWires[0]) setEditingWireRunId(passingWires[0].id); }}><polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke={stroke} strokeWidth={selected ? 3.5 : 2.5} strokeDasharray={dash} /><text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M - 7} textAnchor="middle" fill="var(--layer-conduit)" fontSize={10}>{fmtM(conduitLength(doc, c))} · Ø {c.diameter}mm{wireText ? ` · ${wireText}` : ""}</text>{selected && (c.route ?? []).map((p, index) => <circle key={index} cx={p.x * PX_PER_M} cy={p.y * PX_PER_M} r={5.5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} onMouseDown={(e) => startBendMove(e, c.id, index)} />)}</g>; })}
 
-      {visible.fiacao && wireRuns.flatMap((run) => run.conduitIds.map((conduitId, index) => { const conduit = doc.conduits.find((c) => c.id === conduitId); if (!conduit) return null; const path = conduitPath(doc, conduit); if (path.length < 2) return null; const middle = path[Math.floor(path.length / 2)]; return <g key={`${run.id}-${conduitId}`} pointerEvents="none"><polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke="var(--primary)" strokeWidth={1.1} strokeDasharray="1 3" />{index === 0 && <text x={middle.x * PX_PER_M} y={middle.y * PX_PER_M + 11} textAnchor="middle" fill="var(--primary)" fontSize={8.5}>{run.circuitId}: {run.roles.join("/")}</text>}</g>; }))}
+      {visible.fiacao && wireRuns.flatMap((run) => run.conduitIds.map((conduitId, index) => { const conduit = doc.conduits.find((c) => c.id === conduitId); if (!conduit) return null; const path = conduitPath(doc, conduit); if (path.length < 2) return null; const middle = path[Math.floor(path.length / 2)], section = wireSection(doc, run), anchorX = middle.x, anchorY = middle.y, labelX = run.labelX ?? anchorX + 0.3, labelY = run.labelY ?? anchorY + 0.55; return <g key={`${run.id}-${conduitId}`}><polyline points={path.map((p) => `${p.x * PX_PER_M},${p.y * PX_PER_M}`).join(" ")} fill="none" stroke="var(--primary)" strokeWidth={1.1} strokeDasharray="1 3" onDoubleClick={(e) => { e.stopPropagation(); setEditingWireRunId(run.id); }} />{index === 0 && <><line x1={anchorX * PX_PER_M} y1={anchorY * PX_PER_M} x2={labelX * PX_PER_M - 4} y2={labelY * PX_PER_M} stroke="var(--primary)" strokeWidth={0.8} opacity={0.75} pointerEvents="none" /><circle cx={anchorX * PX_PER_M} cy={anchorY * PX_PER_M} r={2} fill="var(--primary)" pointerEvents="none" /><g onMouseDown={(e) => startWireLabelMove(e, run.id, labelX, labelY)} onDoubleClick={(e) => { e.stopPropagation(); setEditingWireRunId(run.id); }}><rect x={labelX * PX_PER_M - 4} y={labelY * PX_PER_M - 13} width={Math.max(116, (run.circuitId.length + run.roles.join("/").length) * 6.2)} height={28} rx={3} fill="var(--surface)" stroke="var(--primary)" strokeWidth={0.8} /><text x={labelX * PX_PER_M} y={labelY * PX_PER_M - 2} fill="var(--primary)" fontSize={9} fontWeight="700">{run.circuitId} · {run.roles.length} × {String(section).replace(".", ",")} mm²</text><text x={labelX * PX_PER_M} y={labelY * PX_PER_M + 10} fill="var(--muted-foreground)" fontSize={8}>{run.roles.join(" / ")}</text></g></>}</g>; }))}
 
       {visible.quadro && doc.panels.map((p) => { const isSupply = (p.kind ?? "distribution") === "supply", selected = isSel("panel", p.id) || conduitFrom === p.id, cx = p.x * PX_PER_M, cy = p.y * PX_PER_M; return <g key={p.id} transform={`rotate(${p.rotation ?? 0} ${cx} ${cy})`} onMouseDown={(e) => startMove(e, "panel", p.id, p.x, p.y)} onClick={(e) => handleNodeClick(e, p.id)} onDoubleClick={(e) => { e.stopPropagation(); if (!isSupply) { onSelect({ type: "panel", id: p.id }); onPanelDoubleClick(p.id); } }}><rect x={cx - 22} y={cy - 17} width={44} height={34} rx={3} fill="var(--surface)" stroke={selected ? "var(--primary)" : "var(--layer-panel)"} strokeWidth={2.2} />{isSupply ? <><rect x={cx - 18} y={cy - 13} width={36} height={26} fill="none" stroke="var(--layer-panel)" /><path d={`M ${cx - 3} ${cy - 10} L ${cx + 3} ${cy - 2} L ${cx} ${cy - 2} L ${cx + 4} ${cy + 9} L ${cx - 5} ${cy + 1} L ${cx - 1} ${cy + 1} Z`} fill="var(--layer-panel)" /></> : <><line x1={cx - 15} y1={cy - 8} x2={cx + 15} y2={cy - 8} stroke="var(--layer-panel)" /><line x1={cx - 15} y1={cy} x2={cx + 15} y2={cy} stroke="var(--layer-panel)" /><line x1={cx - 15} y1={cy + 8} x2={cx + 15} y2={cy + 8} stroke="var(--layer-panel)" /></>}<text x={cx} y={cy + 4} textAnchor="middle" fill={selected ? "var(--primary)" : "var(--layer-panel)"} fontSize={10} fontWeight="700">{isSupply ? "QA" : "QD"}</text><text x={cx} y={cy + 29} textAnchor="middle" fill="var(--layer-panel)" fontSize={9.5}>{p.name}</text></g>; })}
 
@@ -263,6 +275,19 @@ export function PlanCanvas({ doc, onChange, tool, activeKind, visible, selection
           </>}
           <label className="grid gap-1">Observações<textarea className="min-h-16 rounded-md border border-input bg-background p-2 text-sm" value={editingPoint.notes ?? ""} onChange={(e) => patchEditingPoint({ notes: e.target.value })} /></label>
           <div className="flex justify-end pt-1"><button type="button" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => setEditingPointId(null)}>Concluir</button></div>
+        </div>
+      </div>
+    </foreignObject>}
+
+    {editingWireRun && <foreignObject x="18" y="48" width="370" height="330">
+      <div className="rounded-lg border border-border bg-card p-4 text-foreground shadow-2xl">
+        <div className="mb-3 flex items-start justify-between gap-3"><div><p className="tech-label">Configuração da fiação</p><p className="font-mono text-sm text-primary">Circuito {editingWireRun.circuitId}</p></div><button type="button" className="rounded border border-border px-2 py-1 text-xs" onClick={() => setEditingWireRunId(null)}>✕</button></div>
+        <div className="space-y-3 text-xs">
+          <div className="rounded border border-border bg-background/60 p-2"><span className="text-muted-foreground">Condutores</span><p className="mt-1 font-mono">{editingWireRun.roles.join(" / ")} · {editingWireRun.roles.length} fio(s)</p></div>
+          <label className="grid gap-1"><span>Bitola de cada cabo</span><select className="h-9 rounded border border-input bg-background px-2" value={wireSection(doc, editingWireRun)} onChange={(e) => patchWireRun({ section: Number(e.target.value) })}>{[1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240].map((section) => <option key={section} value={section}>{String(section).replace(".", ",")} mm²</option>)}</select></label>
+          <label className="grid gap-1"><span>Bitola personalizada (mm²)</span><input className="h-9 rounded border border-input bg-background px-2" type="number" min="0.5" step="0.5" value={wireSection(doc, editingWireRun)} onChange={(e) => patchWireRun({ section: Math.max(0.5, Number(e.target.value) || 0.5) })} /></label>
+          <p className="text-[10px] text-muted-foreground">A alteração substitui a bitola calculada automaticamente para esta fiação. Arraste a etiqueta na planta para reposicioná-la.</p>
+          <button type="button" className="w-full rounded bg-primary px-3 py-2 font-medium text-primary-foreground" onClick={() => setEditingWireRunId(null)}>Aplicar configuração</button>
         </div>
       </div>
     </foreignObject>}
