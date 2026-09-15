@@ -12,6 +12,7 @@ import { analyzeConduits } from "@/lib/conduit-analysis";
 import { buildControlPlan } from "@/lib/switching";
 import { getProtectionConfigs, setProtectionConfig } from "@/lib/protection";
 import { CircuitManager } from "./CircuitManager";
+import { PanelBuilder3D } from "./PanelBuilder3D";
 
 type Props = { doc: PlanDocument; onChange: (updater: (doc: PlanDocument) => PlanDocument) => void };
 type Tab = "cargas" | "circuitos" | "validacao" | "materiais" | "quadro" | "fiacao" | "fases" | "docs" | "protecao" | "eletrodutos" | "comandos";
@@ -44,7 +45,7 @@ export function EngineeringWorkspace({ doc, onChange }: Props) {
       {tab === "cargas" && <LoadSchedule />}
       {tab === "circuitos" && <CircuitManager doc={doc} onChange={onChange} />}
 
-      {tab === "quadro" && <div className="space-y-3 p-3"><Title title="Quadros de distribuição" subtitle="Visão lógica dos circuitos associados" />{doc.panels.length === 0 ? <Empty text="Nenhum quadro posicionado." /> : doc.panels.map((panel) => { const circuits = overview.circuits.filter((c) => c.panelId === panel.id); const modules = Math.max(8, Math.ceil((circuits.length + 3) / 4) * 4); return <div key={panel.id} className="rounded border border-border bg-card/50 p-2"><div className="flex justify-between"><span className="font-mono text-primary">{panel.name}</span><span className="text-[11px] text-muted-foreground">sugestão ≥ {modules} módulos</span></div><div className="mt-2 space-y-1 text-xs"><div className="rounded bg-background/60 px-2 py-1">Disjuntor geral · configurar</div><div className="rounded bg-background/60 px-2 py-1">DPS · configurar</div><div className="rounded bg-background/60 px-2 py-1">DR · configurar</div>{circuits.map((c) => <div key={c.id} className="flex justify-between rounded bg-background/60 px-2 py-1"><span>{c.id} · {c.description}</span><span className="font-mono">{c.designCurrent == null ? "—" : `${c.designCurrent.toFixed(1)} A`}</span></div>)}</div></div>; })}</div>}
+      {tab === "quadro" && <PanelBuilder3D doc={doc} onChange={onChange} />}
 
       {tab === "fiacao" && <div className="p-3"><Title title="Fiação estimada" subtitle="Comprimentos por circuito com margem de compra" />{wiring.length === 0 ? <Empty text="Conecte circuitos ao quadro através dos eletrodutos para gerar a estimativa." /> : <div className="mt-2 space-y-1">{wiring.map((wire) => <div key={`${wire.circuitId}-${wire.role}`} className="flex justify-between rounded border border-border/60 bg-card/45 px-2 py-1.5 text-xs"><div><div className="font-mono text-primary">{wire.marker}</div><div className="text-[10px] text-muted-foreground">{String(wire.section).replace(".", ",")} mm² · traçado {wire.length.toLocaleString("pt-BR")} m</div></div><div className="font-mono">comprar {wire.purchaseLength.toLocaleString("pt-BR")} m</div></div>)}</div>}</div>}
 
@@ -69,7 +70,7 @@ export function EngineeringWorkspace({ doc, onChange }: Props) {
   }
 }
 
-function labelTab(tab: Tab, errors: number) { const labels: Record<Tab,string> = { cargas:"Cargas", circuitos:"Circuitos", quadro:"Quadro", fiacao:"Fiação", eletrodutos:"Eletrod.", protecao:"DR/DPS", fases:"Fases", comandos:"3/4-way", validacao: errors ? `Validar (${errors})` : "Validar", materiais:"Materiais", docs:"Docs" }; return labels[tab]; }
+function labelTab(tab: Tab, errors: number) { const labels: Record<Tab,string> = { cargas:"Cargas", circuitos:"Circuitos", quadro:"Quadro 3D", fiacao:"Fiação", eletrodutos:"Eletrod.", protecao:"DR/DPS", fases:"Fases", comandos:"3/4-way", validacao: errors ? `Validar (${errors})` : "Validar", materiais:"Materiais", docs:"Docs" }; return labels[tab]; }
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <Button type="button" size="sm" variant={active ? "default" : "ghost"} onClick={onClick}>{children}</Button>; }
 function Title({ title, subtitle }: { title: string; subtitle: string }) { return <div><p className="tech-label">{title}</p><p className="text-[11px] text-muted-foreground">{subtitle}</p></div>; }
 function Empty({ text }: { text: string }) { return <p className="mt-2 text-xs text-muted-foreground">{text}</p>; }
