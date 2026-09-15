@@ -36,6 +36,7 @@ import { PropertiesPanel } from "@/components/plan/PropertiesPanel";
 import { PlanSummaryPanel } from "@/components/plan/PlanSummaryPanel";
 import { CircuitsSummary } from "@/components/plan/CircuitsSummary";
 import { EngineeringWorkspace } from "@/components/plan/EngineeringWorkspace";
+import { PanelBuilder3D } from "@/components/plan/PanelBuilder3D";
 import { ProjectToolsPanel } from "@/components/plan/ProjectToolsPanel";
 import { CompletionPanel } from "@/components/plan/CompletionPanel";
 import { PlatformPanel } from "@/components/plan/PlatformPanel";
@@ -90,6 +91,7 @@ function EditorPage() {
   const [activeKind, setActiveKind] = useState<ComponentKind>("ponto_luz");
   const [visible, setVisible] = useState<Record<LayerId, boolean>>(ALL_VISIBLE);
   const [selection, setSelection] = useState<Selection>(null);
+  const [openPanel3D, setOpenPanel3D] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
@@ -402,7 +404,7 @@ function EditorPage() {
         <main className="relative min-w-0 flex-1 overflow-hidden">
           <PlanReferenceOverlay doc={doc} />
           <div className="absolute inset-0 z-10 touch-none">
-            <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("navigate")} />
+            <PlanCanvas doc={doc} onChange={update} tool={tool} activeKind={activeKind} visible={visible} selection={selection} onSelect={setSelection} onToolDone={() => setTool("navigate")} onPanelDoubleClick={setOpenPanel3D} />
           </div>
           <div className={cn("pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full border border-border bg-card/95 px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm sm:bottom-4 sm:px-4 sm:text-xs")}>
             <span className="sm:hidden">{activeTool?.hint}</span>
@@ -433,6 +435,8 @@ function EditorPage() {
           <div className="min-h-0 flex-1 overflow-y-auto">{summaryContent}</div>
         </aside>
       </div>
+
+      {openPanel3D && <div role="dialog" aria-modal="true" aria-label="Montagem 3D do quadro de distribuição" className="fixed inset-0 z-[120] flex flex-col bg-background/95 backdrop-blur-sm"><div className="flex shrink-0 items-center justify-between border-b border-border bg-sidebar px-3 py-2"><div><p className="text-sm font-semibold">Montagem 3D · {doc.panels.find((p) => p.id === openPanel3D)?.name}</p><p className="text-[10px] text-muted-foreground">As alterações são salvas automaticamente no projeto.</p></div><Button size="sm" variant="secondary" onClick={() => setOpenPanel3D(null)}><X className="h-4 w-4" />Fechar</Button></div><div className="min-h-0 flex-1 overflow-auto"><PanelBuilder3D key={openPanel3D} doc={doc} onChange={update} initialPanelId={openPanel3D} /></div></div>}
 
       {!isLoading && !project && <div className="absolute inset-0 z-[100] grid place-items-center bg-background/90 p-6"><Button onClick={() => navigate({ to: "/projetos" })}><ArrowLeft className="h-4 w-4" />Projeto não encontrado</Button></div>}
     </div>

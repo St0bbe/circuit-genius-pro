@@ -27,6 +27,7 @@ import {
 type Props = {
   doc: PlanDocument;
   onChange: (updater: (doc: PlanDocument) => PlanDocument) => void;
+  initialPanelId?: string;
 };
 const COLORS: Record<WireColor, string> = {
   red: "#ef4444",
@@ -36,8 +37,13 @@ const COLORS: Record<WireColor, string> = {
   yellow: "#eab308",
 };
 
-export function PanelBuilder3D({ doc, onChange }: Props) {
-  const [panelId, setPanelId] = useState(doc.panels[0]?.id ?? "");
+export function PanelBuilder3D({ doc, onChange, initialPanelId }: Props) {
+  const [panelId, setPanelId] = useState(
+    initialPanelId ??
+      doc.panels.find((panel) => (panel.kind ?? "distribution") === "distribution")?.id ??
+      doc.panels[0]?.id ??
+      "",
+  );
   const [selected, setSelected] = useState<string | null>(null);
   const [rotate, setRotate] = useState(-7);
   const [tilt, setTilt] = useState(4);
